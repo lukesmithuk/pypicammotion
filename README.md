@@ -43,7 +43,7 @@ See [`config.example.yaml`](config.example.yaml) for a fully commented example. 
 
 | Setting | Default | Description |
 |---|---|---|
-| `storage.path` | `/var/lib/pypicammotion/clips` | Where clips are saved |
+| `storage.path` | `/var/lib/pypicammotion/clips` | Where clips are saved (supports `~`) |
 | `storage.max_gb` | `10.0` | Disk quota — oldest clips evicted first |
 | `cameras.*.device` | `0` | Camera index from `list-cameras` |
 | `cameras.*.resolution` | `[1920, 1080]` | Recording resolution |
@@ -88,7 +88,7 @@ journalctl -u pypicammotion -f
 ## Architecture
 
 - One thread per camera, Picamera2 created inside its thread
-- Motion detection runs on the `lores` stream (640x480 YUV420) via `pre_callback` — the Y-plane is already grayscale
+- Motion detection runs on the `lores` stream (640x480 YUV420) via `pre_callback` — the Y-plane is already grayscale. Compares each frame to one from ~0.5 s ago (ring buffer) so continuous motion sustains detection
 - Recording uses `CircularOutput2` + `PyavOutput` for MP4 with pre-motion buffer
 - `LibavH264Encoder` (software H.264) — Pi 5 has no hardware H.264 encoder
 - Storage manager tracks clips in-memory, rescans on startup, evicts oldest-first
