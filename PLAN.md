@@ -11,7 +11,7 @@ pypicammotion is a motion-detection video recording service for Raspberry Pi cam
 | Encoder | `LibavH264Encoder` (software/libx264) | Pi 5 has no V4L2 H264 hardware encoder |
 | Motion detection stream | `lores` at 640x480 YUV420 | Y-plane is already grayscale — no `cvtColor` needed. 1/9th the pixels of 1080p |
 | Frame access | picamera2 `pre_callback` | Runs in picamera2's event loop, no extra capture thread |
-| Ring buffer | `CircularOutput2` + `PyavOutput` | Built into picamera2 — `open_output()` to start recording, `close_output()` to stop. Outputs MP4 |
+| Ring buffer | `CircularOutput2` + `PyavOutput` | Built into picamera2 — `open_output()` to start recording, `stop()` + `start()` to flush and close. Outputs MP4 |
 | Threading | One thread per camera, Picamera2 created inside thread | picamera2 setup is not thread-safe across instances |
 | Config | YAML via `pyyaml`, dataclasses | Minimal deps, natural for nested per-camera config |
 | MQTT | Optional dep (`paho-mqtt`), graceful degradation | Service works without network; import is guarded |
@@ -48,16 +48,18 @@ pypicammotion/
 **`pyproject.toml`** — Add pyyaml, optional paho-mqtt, CLI entry point.
 
 **`config.py`** — Dataclasses for configuration:
-- `CameraConfig`: name, device (int), resolution, fps, pre_motion_seconds, post_motion_seconds, sensitivity (0.0–1.0), min_contour_area, blur_kernel
-- `StorageConfig`: path, max_gb
+- `CameraConfig`: name, device (int), resolution, lores_resolution, fps, pre_motion_seconds, post_motion_seconds, sensitivity (0.0–1.0), min_contour_area, blur_kernel
+- `StorageConfig`: path (tilde-expanded via `expanduser()`), max_gb
 - `MqttConfig`: broker, port, topic_prefix, enabled
 - `AppConfig`: storage, mqtt, cameras dict
 - `load_config(path) -> AppConfig` with defaults and validation
 
 **`motion.py`** — `MotionDetector` class:
 - `detect(frame) -> (bool, float)` — returns (motion_detected, motion_score)
-- Algorithm: extract Y-plane from YUV420 → GaussianBlur → absdiff with prev frame → threshold → dilate → findContours → filter by min_contour_area → motion_score = contour area / total pixels → compare to sensitivity
-- `reset()` — clear previous frame
+- Uses a ring buffer of `compare_frames` blurred grayscale frames (default 15, ~0.5 s at 30 fps). Compares the current frame to the oldest in the buffer so continuous, steady motion keeps producing a large diff rather than vanishing between consecutive frames.
+- Algorithm: extract Y-plane from YUV420 → GaussianBlur → absdiff with oldest buffered frame → threshold → dilate → findContours → filter by min_contour_area → motion_score = contour area / total pixels → compare to sensitivity
+- `compare_frames` is derived from camera FPS: `max(1, fps // 2)` — always ~0.5 s
+- `reset()` — clear frame buffer
 
 **`camera.py`** — `Camera` class wrapping one Picamera2 instance:
 - State machine: `IDLE → RECORDING → TAIL → IDLE`
@@ -67,7 +69,7 @@ pypicammotion/
   - TAIL + motion → back to RECORDING
   - TAIL + deadline passed → stop_recording → IDLE
 - Uses `pre_callback` on `lores` stream for motion detection (fast, <5ms)
-- Recording: `CircularOutput2(buffer_duration_ms)` → `open_output(PyavOutput(...))` / `close_output()`
+- Recording: `CircularOutput2(buffer_duration_ms)` → `open_output(PyavOutput(...))` to start, `stop()` + `start()` to flush buffer and finalize MP4 (not `close_output()` which discards unflushed frames)
 - Clip path: `{storage}/{camera_name}/{YYYY-MM-DD}/{HH-MM-SS}.mp4`
 - `on_clip_saved` callback: (camera_name, path, timestamp, duration)
 

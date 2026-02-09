@@ -28,7 +28,26 @@ for name, cam in cfg.cameras.items():
 - [ ] MQTT shows `enabled: False`
 - [ ] Camera `front` listed with expected defaults from `config.example.yaml`
 
-### 1.2 Defaults when no cameras defined
+### 1.2 Tilde expansion in storage path
+
+```bash
+cat > /tmp/tilde-test.yaml << 'EOF'
+storage:
+  path: ~/my-clips
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/tilde-test.yaml')
+print(f'storage path: {cfg.storage.path}')
+"
+```
+
+- [ ] Path is expanded to `/home/<user>/my-clips`, not literal `~/my-clips`
+
+### 1.3 Defaults when no cameras defined
 
 Create a minimal config:
 ```bash
@@ -44,7 +63,7 @@ print(f'cam0 device: {cfg.cameras[\"cam0\"].device}')
 - [ ] Warning logged: `no cameras defined in config, adding default camera 0`
 - [ ] Default camera `cam0` with `device=0` is created
 
-### 1.3 Validation — sensitivity out of range
+### 1.4 Validation — sensitivity out of range
 
 ```bash
 cat > /tmp/bad-sens.yaml << 'EOF'
@@ -61,7 +80,7 @@ load_config('/tmp/bad-sens.yaml')
 
 - [ ] Raises `ValueError` mentioning `sensitivity must be 0.0–1.0`
 
-### 1.4 Validation — even blur kernel
+### 1.5 Validation — even blur kernel
 
 ```bash
 cat > /tmp/bad-blur.yaml << 'EOF'
@@ -78,7 +97,7 @@ load_config('/tmp/bad-blur.yaml')
 
 - [ ] Raises `ValueError` mentioning `blur_kernel must be odd`
 
-### 1.5 Validation — bad resolution
+### 1.6 Validation — bad resolution
 
 ```bash
 cat > /tmp/bad-res.yaml << 'EOF'
@@ -95,7 +114,7 @@ load_config('/tmp/bad-res.yaml')
 
 - [ ] Raises `ValueError` mentioning `resolution must be [width, height]`
 
-### 1.6 Non-mapping config file
+### 1.7 Non-mapping config file
 
 ```bash
 echo '"just a string"' > /tmp/bad-type.yaml
@@ -111,6 +130,11 @@ load_config('/tmp/bad-type.yaml')
 
 ## 2. motion.py — Motion Detection
 
+The detector uses a ring buffer of blurred grayscale frames and compares the
+current frame to one from `compare_frames` ago (~0.5 s at 30 fps). This keeps
+the diff large during continuous, steady motion rather than comparing
+consecutive frames which are nearly identical at high frame rates.
+
 ### 2.1 No motion on identical frames
 
 ```bash
@@ -118,7 +142,7 @@ python3 -c "
 import numpy as np
 from pypicammotion.motion import MotionDetector
 
-det = MotionDetector(resolution=(640, 480))
+det = MotionDetector(resolution=(640, 480), compare_frames=3)
 frame = np.full((720, 640), 128, dtype=np.uint8)  # YUV420: 480 * 3/2 = 720 rows
 
 motion, score = det.detect(frame)
@@ -129,8 +153,8 @@ print(f'same frame:   motion={motion}, score={score}')
 "
 ```
 
-- [ ] First frame: `motion=False, score=0.0` (no previous frame to compare)
-- [ ] Same frame: `motion=False, score=0.0` (no change)
+- [ ] First frame: `motion=False, score=0.0` (buffer empty, no comparison yet)
+- [ ] Same frame: `motion=False, score=0.0` (no change from oldest buffered frame)
 
 ### 2.2 Motion detected on changed frame
 
@@ -139,9 +163,9 @@ python3 -c "
 import numpy as np
 from pypicammotion.motion import MotionDetector
 
-det = MotionDetector(resolution=(640, 480), sensitivity=0.05, min_contour_area=500)
+det = MotionDetector(resolution=(640, 480), sensitivity=0.05, min_contour_area=500, compare_frames=3)
 frame1 = np.full((720, 640), 128, dtype=np.uint8)
-det.detect(frame1)  # prime
+det.detect(frame1)  # prime buffer
 
 frame2 = frame1.copy()
 frame2[100:350, 150:450] = 255  # large bright rectangle
@@ -153,14 +177,73 @@ print(f'motion={motion}, score={score:.4f}')
 - [ ] `motion=True`
 - [ ] `score` is significantly above 0.05
 
-### 2.3 Small contours filtered out
+### 2.3 Continuous motion holds detection
 
 ```bash
 python3 -c "
 import numpy as np
 from pypicammotion.motion import MotionDetector
 
-det = MotionDetector(resolution=(640, 480), sensitivity=0.001, min_contour_area=5000)
+det = MotionDetector(resolution=(640, 480), sensitivity=0.05, compare_frames=3)
+still = np.full((720, 640), 128, dtype=np.uint8)
+motion_frame = still.copy()
+motion_frame[100:300, 200:400] = 255
+
+# Prime with still frames
+det.detect(still)
+det.detect(still)
+det.detect(still)
+
+# Motion frame compared to still frame from 3 frames ago
+m, s = det.detect(motion_frame)
+print(f'frame 4 (motion):      motion={m}, score={s:.4f}')
+m, s = det.detect(motion_frame)
+print(f'frame 5 (motion cont): motion={m}, score={s:.4f}')
+m, s = det.detect(motion_frame)
+print(f'frame 6 (motion cont): motion={m}, score={s:.4f}')
+"
+```
+
+- [ ] Frames 4–6 all show `motion=True` — detection holds across multiple frames
+  because each is compared to a still frame from 3 frames ago
+
+### 2.4 Scene change settles after buffer rotates
+
+```bash
+python3 -c "
+import numpy as np
+from pypicammotion.motion import MotionDetector
+
+det = MotionDetector(resolution=(640, 480), sensitivity=0.05, compare_frames=3)
+still = np.full((720, 640), 128, dtype=np.uint8)
+changed = still.copy()
+changed[100:300, 200:400] = 255
+
+# Prime with still
+for _ in range(3):
+    det.detect(still)
+
+# Scene changes permanently
+det.detect(changed)  # motion (compared to still)
+det.detect(changed)  # motion (compared to still)
+det.detect(changed)  # motion (compared to still)
+
+# Buffer now full of changed frames — ref is also changed
+m, s = det.detect(changed)
+print(f'after buffer rotates: motion={m}, score={s:.4f}')
+"
+```
+
+- [ ] After the buffer fills with the new scene, `motion=False` — the detector adapts
+
+### 2.5 Small contours filtered out
+
+```bash
+python3 -c "
+import numpy as np
+from pypicammotion.motion import MotionDetector
+
+det = MotionDetector(resolution=(640, 480), sensitivity=0.001, min_contour_area=5000, compare_frames=3)
 frame1 = np.full((720, 640), 128, dtype=np.uint8)
 det.detect(frame1)
 
@@ -173,15 +256,16 @@ print(f'motion={motion}, score={score:.6f}')
 
 - [ ] `motion=False` — the 10x10 contour (100 pixels) is below `min_contour_area=5000`
 
-### 2.4 Reset clears state
+### 2.6 Reset clears buffer
 
 ```bash
 python3 -c "
 import numpy as np
 from pypicammotion.motion import MotionDetector
 
-det = MotionDetector(resolution=(640, 480))
+det = MotionDetector(resolution=(640, 480), compare_frames=3)
 frame = np.full((720, 640), 128, dtype=np.uint8)
+det.detect(frame)
 det.detect(frame)
 
 det.reset()
@@ -191,16 +275,16 @@ print(f'after reset: motion={motion}, score={score}')
 "
 ```
 
-- [ ] After reset, first frame returns `motion=False, score=0.0` again (no previous frame)
+- [ ] After reset, returns `motion=False, score=0.0` (buffer is empty again)
 
-### 2.5 BGR frame input (3-channel)
+### 2.7 BGR frame input (3-channel)
 
 ```bash
 python3 -c "
 import numpy as np
 from pypicammotion.motion import MotionDetector
 
-det = MotionDetector(resolution=(640, 480))
+det = MotionDetector(resolution=(640, 480), compare_frames=3)
 frame1 = np.full((480, 640, 3), 128, dtype=np.uint8)
 motion, score = det.detect(frame1)
 print(f'BGR first frame: motion={motion}, score={score}')
@@ -214,6 +298,21 @@ print(f'BGR motion: motion={motion}, score={score:.4f}')
 
 - [ ] First frame: `motion=False`
 - [ ] Changed frame: `motion=True` with nonzero score
+
+### 2.8 compare_frames derived from FPS
+
+```bash
+python3 -c "
+from pypicammotion.config import CameraConfig
+from pypicammotion.motion import MotionDetector
+
+for fps in (15, 24, 30, 60):
+    compare = max(1, fps // 2)
+    print(f'fps={fps} -> compare_frames={compare} ({compare/fps:.2f}s)')
+"
+```
+
+- [ ] Each FPS produces ~0.5 s worth of frames (e.g. 30fps → 15, 60fps → 30)
 
 ---
 
@@ -349,6 +448,8 @@ with tempfile.TemporaryDirectory() as d:
 
 ## 4. notifier.py — MQTT Notifications
 
+*Prerequisites: `sudo apt install mosquitto mosquitto-clients`*
+
 ### 4.1 Graceful degradation without paho-mqtt
 
 ```bash
@@ -356,7 +457,6 @@ python3 -c "
 import logging, sys
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
-# Simulate missing paho-mqtt by testing the guard
 from pypicammotion.notifier import _HAS_MQTT, MqttNotifier
 print(f'paho-mqtt available: {_HAS_MQTT}')
 
@@ -387,9 +487,7 @@ print('notify with no client: no crash')
 
 - [ ] No exception, prints `no crash`
 
-### 4.3 Full MQTT round-trip (requires mosquitto)
-
-*Prerequisites: `sudo apt install mosquitto mosquitto-clients`, `poetry install -E mqtt`*
+### 4.3 Full MQTT round-trip
 
 Terminal 1 — subscribe:
 ```bash
@@ -451,7 +549,7 @@ pypicammotion test --camera 0 --sensitivity 0.05 --output-dir /tmp/cam-test
 - [ ] After motion stops, log shows `clip saved: ... (Xs, Y KB)`
 - [ ] Clip file exists at the logged path
 
-### 5.2 Clip is playable MP4 with pre-buffer
+### 5.2 Clip is playable MP4 with correct duration
 
 ```bash
 ffprobe /tmp/cam-test/test/*//*.mp4 2>&1 | grep -E "Duration|Video"
@@ -460,12 +558,23 @@ ffplay /tmp/cam-test/test/*//*.mp4
 ```
 
 - [ ] `ffprobe` shows valid H.264 video stream
-- [ ] Duration is longer than just the motion period (pre-buffer included)
+- [ ] Duration includes pre-motion buffer (clip starts before the motion event)
+- [ ] Duration includes post-motion tail (recording continues after motion stops)
+- [ ] Video duration roughly matches the duration logged by the service
 
-### 5.3 Multiple motion events produce separate clips
+### 5.3 Continuous motion sustains recording
+
+1. Run `pypicammotion test --camera 0 --output-dir /tmp/cam-continuous`
+2. Walk around continuously in front of the camera for 15–20 seconds
+3. Stop and wait for recording to end
+
+- [ ] A single clip is saved (not split into multiple short clips)
+- [ ] Clip duration roughly matches the time spent moving plus pre/post buffer
+
+### 5.4 Multiple motion events produce separate clips
 
 1. Run `pypicammotion test --camera 0 --output-dir /tmp/cam-multi`
-2. Wave hand, wait for recording to stop
+2. Wave hand, wait for recording to stop (~3 s after motion ends)
 3. Wave hand again, wait for recording to stop
 4. Ctrl+C
 
@@ -475,7 +584,7 @@ find /tmp/cam-multi -name "*.mp4" | wc -l
 
 - [ ] At least 2 separate `.mp4` files
 
-### 5.4 Ctrl+C clean shutdown
+### 5.5 Ctrl+C clean shutdown
 
 1. Run `pypicammotion test --camera 0 --output-dir /tmp/cam-shutdown`
 2. Trigger motion so recording starts
@@ -483,9 +592,9 @@ find /tmp/cam-multi -name "*.mp4" | wc -l
 
 - [ ] Prints `stopping…` then `done`
 - [ ] No tracebacks
-- [ ] If a clip was being recorded, it is saved and valid (or at least no crash)
+- [ ] If a clip was being recorded, it is saved and valid
 
-### 5.5 High sensitivity — constant recording
+### 5.6 High sensitivity — constant recording
 
 ```bash
 pypicammotion test --camera 0 --sensitivity 0.001 --output-dir /tmp/cam-sensitive
@@ -494,7 +603,7 @@ pypicammotion test --camera 0 --sensitivity 0.001 --output-dir /tmp/cam-sensitiv
 - [ ] Recording starts almost immediately (very low threshold)
 - [ ] Ctrl+C stops cleanly
 
-### 5.6 Low sensitivity — no false triggers
+### 5.7 Low sensitivity — no false triggers
 
 ```bash
 pypicammotion test --camera 0 --sensitivity 0.8 --output-dir /tmp/cam-insensitive
@@ -503,7 +612,7 @@ pypicammotion test --camera 0 --sensitivity 0.8 --output-dir /tmp/cam-insensitiv
 - [ ] No recording triggered by normal ambient changes
 - [ ] Only triggers if >80% of the frame changes (e.g. covering/uncovering the lens)
 
-### 5.7 Invalid camera device
+### 5.8 Invalid camera device
 
 ```bash
 pypicammotion test --camera 99 --output-dir /tmp/cam-bad 2>&1
@@ -746,19 +855,42 @@ sudo systemctl is-enabled pypicammotion
 - [ ] All clips are valid, playable MP4 files
 - [ ] Each clip contains pre-motion buffer (starts before the motion event)
 - [ ] Post-motion tail is present (recording continues briefly after motion stops)
+- [ ] Continuous motion produces a single long clip, not multiple short ones
+- [ ] Video duration in file roughly matches duration logged by the service
 - [ ] Old clips evicted when quota exceeded
 - [ ] No error tracebacks in output
 
 ### 9.2 Full pipeline with MQTT
 
-*Prerequisites: mosquitto running, `poetry install -E mqtt`*
+*Prerequisites: mosquitto running (`sudo apt install mosquitto mosquitto-clients`)*
 
-1. Subscribe: `mosquitto_sub -t "pypicammotion/#" -v`
-2. Create config with `mqtt.enabled: true`
-3. `pypicammotion run --config config.yaml`
-4. Trigger motion
+Terminal 1 — subscribe:
+```bash
+mosquitto_sub -t "pypicammotion/#" -v
+```
 
-- [ ] MQTT messages appear for each saved clip
+Terminal 2 — run service with MQTT enabled:
+```bash
+cat > /tmp/svc-mqtt.yaml << 'EOF'
+storage:
+  path: /tmp/svc-mqtt-clips
+  max_gb: 0.5
+mqtt:
+  enabled: true
+  broker: localhost
+  port: 1883
+  topic_prefix: pypicammotion
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion run --config /tmp/svc-mqtt.yaml
+```
+
+Trigger motion, then verify:
+
+- [ ] MQTT messages appear in Terminal 1 for each saved clip
 - [ ] JSON payload contains `camera`, `path`, `timestamp`, `duration`
-- [ ] Kill mosquitto → service continues saving clips without crashing
-- [ ] Restart mosquitto → MQTT messages resume
+- [ ] Kill mosquitto (`sudo systemctl stop mosquitto`) → service continues saving clips without crashing
+- [ ] Restart mosquitto (`sudo systemctl start mosquitto`) → MQTT messages resume on next clip
