@@ -63,8 +63,9 @@ def load_config(path: str | Path) -> AppConfig:
         raise ValueError(f"config file must be a YAML mapping, got {type(raw).__name__}")
 
     storage_raw = raw.get("storage", {})
+    storage_path = str(Path(storage_raw.get("path", StorageConfig.path)).expanduser())
     storage = StorageConfig(
-        path=storage_raw.get("path", StorageConfig.path),
+        path=storage_path,
         max_gb=float(storage_raw.get("max_gb", StorageConfig.max_gb)),
     )
 
