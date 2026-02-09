@@ -174,7 +174,10 @@ class Camera:
         start = self._recording_start
 
         try:
-            self._circular.close_output()
+            # stop() flushes all buffered frames then closes the output.
+            # start() resumes buffering for the next clip.
+            self._circular.stop()
+            self._circular.start()
         except Exception:
             log.exception("[%s] error closing output", name)
 
