@@ -94,6 +94,7 @@ class Camera:
             sensitivity=cfg.sensitivity,
             min_contour_area=cfg.min_contour_area,
             blur_kernel=cfg.blur_kernel,
+            compare_frames=max(1, cfg.fps // 2),
         )
 
         self._picam = Picamera2(camera_num=cfg.device)
