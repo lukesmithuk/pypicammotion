@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import logging
+import signal
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+
+from .camera import Camera
+from .config import AppConfig
+from .notifier import MqttNotifier
+from .storage import StorageManager
+
+log = logging.getLogger(__name__)
+
+
+class Service:
+    """Multi-camera orchestrator.
+
+    Creates a shared :class:`StorageManager`, starts each camera in its own
+    thread (sequentially to avoid libcamera race conditions), and blocks
+    until a shutdown signal is received.
+    """
+
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+        self._stop_event = threading.Event()
+        self._cameras: list[Camera] = []
+        self._storage: StorageManager | None = None
+        self._notifier: MqttNotifier | None = None
+
+    def run(self) -> None:
+        self._install_signals()
+
+        # Storage
+        self._storage = StorageManager(
+            self._config.storage.path, self._config.storage.max_bytes
+        )
+
+        # MQTT (optional)
+        if self._config.mqtt.enabled:
+            self._notifier = MqttNotifier(
+                self._config.mqtt.broker,
+                self._config.mqtt.port,
+                self._config.mqtt.topic_prefix,
+            )
+            self._notifier.start()
+
+        # Start cameras sequentially
+        for name, cam_cfg in self._config.cameras.items():
+            storage_path = Path(self._config.storage.path)
+            cam = Camera(
+                config=cam_cfg,
+                storage_path=storage_path,
+                on_clip_saved=self._on_clip_saved,
+                stop_event=self._stop_event,
+            )
+            self._cameras.append(cam)
+            try:
+                cam.start()
+                log.info("started camera '%s' (device %d)", name, cam_cfg.device)
+                # Small delay between camera starts to avoid libcamera races
+                time.sleep(1.0)
+            except Exception:
+                log.exception("failed to start camera '%s'", name)
+
+        if not self._cameras:
+            log.error("no cameras started — exiting")
+            return
+
+        log.info("service running with %d camera(s)", len(self._cameras))
+
+        # Block until shutdown
+        try:
+            while not self._stop_event.is_set():
+                self._stop_event.wait(1.0)
+        except KeyboardInterrupt:
+            pass
+
+        self._shutdown()
+
+    def _on_clip_saved(
+        self, camera: str, path: Path, timestamp: datetime, duration: float
+    ) -> None:
+        if self._storage:
+            self._storage.register_clip(path)
+        if self._notifier:
+            self._notifier.notify_clip_saved(camera, path, timestamp, duration)
+
+    def _install_signals(self) -> None:
+        def _handler(signum, frame):
+            signame = signal.Signals(signum).name
+            log.info("received %s — shutting down", signame)
+            self._stop_event.set()
+
+        signal.signal(signal.SIGTERM, _handler)
+        signal.signal(signal.SIGINT, _handler)
+
+    def _shutdown(self) -> None:
+        log.info("stopping cameras…")
+        for cam in self._cameras:
+            cam.stop()
+        if self._notifier:
+            self._notifier.stop()
+        log.info("shutdown complete")

@@ -1,0 +1,48 @@
+# pypicammotion configuration
+# Copy to /etc/pypicammotion/config.yaml and edit to taste.
+
+storage:
+  # Where to save motion clips
+  path: /var/lib/pypicammotion/clips
+  # Maximum total storage in GB — oldest clips evicted first
+  max_gb: 10.0
+
+mqtt:
+  # Set enabled: true to publish clip events via MQTT
+  # Requires: pip install pypicammotion[mqtt]
+  enabled: false
+  broker: localhost
+  port: 1883
+  topic_prefix: pypicammotion
+
+cameras:
+  # Each key becomes the camera name used in clip paths and MQTT topics.
+  # Use `pypicammotion list-cameras` to find device numbers.
+
+  front:
+    device: 0
+    resolution: [1920, 1080]
+    fps: 30
+
+    # Low-res stream used for motion detection (smaller = faster)
+    lores_resolution: [640, 480]
+
+    # Seconds of video to keep before motion is detected
+    pre_motion_seconds: 5.0
+    # Seconds to keep recording after motion stops
+    post_motion_seconds: 3.0
+
+    # Motion sensitivity: fraction of frame area that must change (0.0–1.0)
+    # Lower = more sensitive. 0.05 works well for indoor rooms.
+    sensitivity: 0.05
+    # Ignore contours smaller than this (pixels) — filters noise
+    min_contour_area: 500
+    # Gaussian blur kernel size (must be odd) — larger = less noise
+    blur_kernel: 21
+
+  # Uncomment to add a second camera:
+  # back:
+  #   device: 1
+  #   resolution: [1920, 1080]
+  #   fps: 30
+  #   sensitivity: 0.08

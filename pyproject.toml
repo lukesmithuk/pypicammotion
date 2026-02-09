@@ -1,0 +1,22 @@
+[project]
+name = "pypicammotion"
+version = "0.1.0"
+description = "Small Python library for capturing videos on motion detection"
+license = "CC0-1.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "picamera2",
+    "opencv-python",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+mqtt = ["paho-mqtt>=2.0"]
+
+[project.scripts]
+pypicammotion = "pypicammotion.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
