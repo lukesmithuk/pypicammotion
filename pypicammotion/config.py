@@ -41,6 +41,7 @@ class MqttConfig:
     broker: str = "localhost"
     port: int = 1883
     topic_prefix: str = "pypicammotion"
+    heartbeat_interval: int = 30
 
 
 @dataclass
@@ -88,6 +89,7 @@ def load_config(path: str | Path) -> AppConfig:
         broker=mqtt_raw.get("broker", MqttConfig.broker),
         port=int(mqtt_raw.get("port", MqttConfig.port)),
         topic_prefix=mqtt_raw.get("topic_prefix", MqttConfig.topic_prefix),
+        heartbeat_interval=int(mqtt_raw.get("heartbeat_interval", MqttConfig.heartbeat_interval)),
     )
 
     audio_raw = raw.get("audio", {})

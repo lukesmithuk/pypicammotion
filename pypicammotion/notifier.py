@@ -43,8 +43,25 @@ class MqttNotifier:
             log.exception("MQTT connection failed (will auto-reconnect)")
             self._client.loop_start()
 
+    def publish_status(self, payload: dict) -> None:
+        """Publish a status payload to {prefix}/status (retained, qos 1)."""
+        if not self._client:
+            return
+        topic = f"{self._prefix}/status"
+        try:
+            self._client.publish(topic, json.dumps(payload), qos=1, retain=True)
+        except Exception:
+            log.exception("MQTT status publish failed")
+
+    def publish_offline(self) -> None:
+        """Publish an offline status (retained) — call before disconnect."""
+        self.publish_status(
+            {"status": "offline", "timestamp": datetime.now().isoformat(timespec="seconds")}
+        )
+
     def stop(self) -> None:
         if self._client:
+            self.publish_offline()
             self._client.loop_stop()
             self._client.disconnect()
             log.info("MQTT disconnected")

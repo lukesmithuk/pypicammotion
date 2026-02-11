@@ -1468,3 +1468,176 @@ pypicammotion -v test --camera 0 --sensitivity 0.01 --output-dir /tmp/meta-fail-
 ```
 
 - [ ] Clips are saved even if metadata write were to fail (warning logged, clip intact)
+
+---
+
+## 12. MQTT Heartbeat + Service Start/Stop Notifications
+
+*Prerequisites: `sudo apt install mosquitto mosquitto-clients`, `poetry install --extras mqtt`*
+
+### 12.1 Config parsing — heartbeat_interval
+
+```bash
+cat > /tmp/hb-cfg.yaml << 'EOF'
+mqtt:
+  enabled: true
+  heartbeat_interval: 15
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/hb-cfg.yaml')
+print(f'heartbeat_interval: {cfg.mqtt.heartbeat_interval}')
+"
+```
+
+- [ ] Prints `heartbeat_interval: 15`
+
+### 12.2 Config default — heartbeat_interval defaults to 30
+
+```bash
+cat > /tmp/hb-default.yaml << 'EOF'
+mqtt:
+  enabled: true
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/hb-default.yaml')
+print(f'heartbeat_interval: {cfg.mqtt.heartbeat_interval}')
+"
+```
+
+- [ ] Prints `heartbeat_interval: 30`
+
+### 12.3 Camera status() method
+
+```bash
+python3 -c "
+from pypicammotion.camera import Camera, State
+from pypicammotion.config import CameraConfig
+from pathlib import Path
+import threading
+
+cam = Camera(CameraConfig(name='test'), Path('/tmp'))
+s = cam.status()
+print(f'state: {s[\"state\"]}')
+print(f'last_clip: {s[\"last_clip\"]}')
+"
+```
+
+- [ ] Prints `state: idle` and `last_clip: None`
+
+### 12.4 Storage status() method
+
+```bash
+python3 -c "
+import tempfile
+from pathlib import Path
+from pypicammotion.storage import StorageManager
+
+with tempfile.TemporaryDirectory() as d:
+    for i in range(3):
+        p = Path(d) / f'clip{i}.mp4'
+        p.write_bytes(b'x' * 1000)
+    sm = StorageManager(d, max_bytes=1_073_741_824)
+    s = sm.status()
+    print(f'clips: {s[\"clips\"]}')
+    print(f'used_mb: {s[\"used_mb\"]}')
+    print(f'max_mb: {s[\"max_mb\"]}')
+"
+```
+
+- [ ] `clips: 3`
+- [ ] `used_mb: 0.0` (3 KB rounds to 0.0 MB)
+- [ ] `max_mb: 1024.0`
+
+### 12.5 Notifier publish_status and publish_offline
+
+Terminal 1 — subscribe:
+```bash
+mosquitto_sub -t "pypicammotion/#" -v
+```
+
+Terminal 2 — test status publish:
+```bash
+python3 -c "
+import time, logging, sys
+logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+
+from pypicammotion.notifier import MqttNotifier
+n = MqttNotifier('localhost', 1883, 'pypicammotion')
+n.start()
+time.sleep(1)
+n.publish_status({'status': 'online', 'test': True})
+time.sleep(1)
+n.stop()  # publishes offline then disconnects
+time.sleep(1)
+"
+```
+
+- [ ] Terminal 1 receives: `pypicammotion/status {"status": "online", "test": true}`
+- [ ] Terminal 1 receives: `pypicammotion/status {"status": "offline", "timestamp": "..."}`
+- [ ] Both messages are retained (new subscriber gets the last one)
+
+### 12.6 Full heartbeat — online on start, periodic, offline on stop
+
+Terminal 1 — subscribe:
+```bash
+mosquitto_sub -t "pypicammotion/#" -v
+```
+
+Terminal 2 — run service with short heartbeat:
+```bash
+cat > /tmp/hb-test.yaml << 'EOF'
+storage:
+  path: /tmp/hb-clips
+  max_gb: 0.5
+mqtt:
+  enabled: true
+  heartbeat_interval: 10
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion run --config /tmp/hb-test.yaml
+```
+
+- [ ] Immediately on start: `pypicammotion/status` with `"status": "online"`, camera states, storage info, features
+- [ ] Every ~10s: updated status with current uptime and camera states
+- [ ] Trigger motion: camera state changes to `recording` in next heartbeat; `pypicammotion/clips/front` fires as before
+- [ ] After motion stops: camera state returns to `idle`, `last_clip` is set
+- [ ] Ctrl+C: `pypicammotion/status` with `"status": "offline"` and a timestamp
+- [ ] Retained: new `mosquitto_sub` after service started immediately gets the last status
+
+### 12.7 Heartbeat disabled — interval 0
+
+```bash
+cat > /tmp/hb-disabled.yaml << 'EOF'
+storage:
+  path: /tmp/hb-disabled-clips
+  max_gb: 0.5
+mqtt:
+  enabled: true
+  heartbeat_interval: 0
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion run --config /tmp/hb-disabled.yaml
+```
+
+Terminal 1:
+```bash
+mosquitto_sub -t "pypicammotion/#" -v
+```
+
+- [ ] No `pypicammotion/status` messages published (heartbeat disabled)
+- [ ] Clip notifications (`pypicammotion/clips/front`) still work normally
+- [ ] Offline status still published on Ctrl+C (via notifier.stop())

@@ -60,6 +60,7 @@ class Camera:
         self._circular: CircularOutput2 | None = None
         self._thread: threading.Thread | None = None
         self._detector: MotionDetector | None = None
+        self._last_clip_time: datetime | None = None
         self._lock = threading.Lock()
 
     # -- public API ----------------------------------------------------------
@@ -74,6 +75,14 @@ class Camera:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10)
+
+    def status(self) -> dict:
+        """Return current camera state for heartbeat reporting."""
+        with self._lock:
+            return {
+                "state": self._state.value,
+                "last_clip": self._last_clip_time.isoformat(timespec="seconds") if self._last_clip_time else None,
+            }
 
     # -- internals -----------------------------------------------------------
 
@@ -249,6 +258,7 @@ class Camera:
         if clip and start and clip.exists():
             duration = (datetime.now() - start).total_seconds()
             size_kb = clip.stat().st_size / 1024
+            self._last_clip_time = start
             log.info("[%s] clip saved: %s (%.1fs, %.0f KB, peak=%.3f)", name, clip, duration, size_kb, self._peak_score)
             self._write_metadata(clip, name, start, self._peak_score)
             if self._on_clip_saved:

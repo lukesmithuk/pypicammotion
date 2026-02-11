@@ -42,7 +42,7 @@ cli.py → Service → Camera(s) → MotionDetector
            │                        ↓ (pre_callback on lores stream)
            ├── StorageManager  ← registers clips, enforces disk quota
            ├── AudioCapture    ← optional, post-mux audio onto saved clips
-           └── MqttNotifier    ← optional, publishes clip-saved events
+           └── MqttNotifier    ← optional, publishes clip events + heartbeat status
 ```
 
 **Camera state machine**: `IDLE → RECORDING → TAIL → IDLE`

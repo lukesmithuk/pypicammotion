@@ -27,8 +27,10 @@
   transitions (INFO on start/save, DEBUG on tail enter/resume) and track
   peak score per clip. Visible with `-v` for sensitivity tuning.
 
-- [ ] **Health check endpoint** — expose a simple HTTP or MQTT heartbeat so
-  monitoring systems can verify the service is alive and cameras are running.
+- [x] **Health check endpoint** — MQTT heartbeat on `{prefix}/status` every
+  N seconds (configurable via `heartbeat_interval`). Publishes camera states,
+  storage usage, uptime, and feature flags. Retained messages for instant
+  subscriber state. Online on start, offline on shutdown.
 
 - [x] **Clip metadata** — embed motion score, camera name, and timestamps in
   the MP4 container metadata via PyAV (title, date, comment with JSON).
@@ -44,8 +46,9 @@
   supported in config (`lores_resolution`) but not documented as a tuning
   knob. Lower resolution = faster detection but less spatial precision.
 
-- [ ] **Notification on service start/stop** — MQTT message when the service
-  starts or stops, not just on clip saves.
+- [x] **Notification on service start/stop** — online status published on
+  start, offline status (retained) published on shutdown, via the heartbeat
+  status topic.
 
 - [x] **Audio recording** — post-mux audio from USB mic onto saved clips
   via sounddevice + PyAV. Shared AudioCapture thread with rolling buffer,

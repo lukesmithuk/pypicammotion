@@ -59,6 +59,7 @@ See [`config.example.yaml`](config.example.yaml) for a fully commented example. 
 | `audio.channels` | `1` | Number of channels (1=mono, 2=stereo) |
 | `audio.buffer_seconds` | `15.0` | Rolling buffer size (must be >= `pre_motion_seconds`) |
 | `mqtt.enabled` | `false` | Enable MQTT clip notifications |
+| `mqtt.heartbeat_interval` | `30` | Publish service status every N seconds (0 to disable) |
 
 ## Audio
 
@@ -90,6 +91,14 @@ When enabled, each saved clip publishes a JSON message to `{topic_prefix}/clips/
 ```json
 {"camera": "front", "path": "/var/lib/.../clip.mp4", "timestamp": "2026-02-09T14:30:00", "duration": 8.5}
 ```
+
+A retained status message is published to `{topic_prefix}/status` on start, every `heartbeat_interval` seconds, and on shutdown. New subscribers immediately get the last known state:
+
+```json
+{"status": "online", "uptime_seconds": 3600, "cameras": {"front": {"state": "idle", "last_clip": "..."}}, "storage": {"clips": 42, "used_mb": 1234.5, "max_mb": 5120.0}, "features": {"audio": true, "mqtt": true}}
+```
+
+On shutdown, `{"status": "offline", "timestamp": "..."}` is published (also retained). Set `heartbeat_interval: 0` to disable periodic status.
 
 ## systemd
 

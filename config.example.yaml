@@ -17,6 +17,8 @@ mqtt:
   broker: localhost
   port: 1883
   topic_prefix: pypicammotion
+  # Publish service status every N seconds (0 to disable)
+  heartbeat_interval: 30
 
 audio:
   # Set enabled: true to mux audio from a USB mic onto clips

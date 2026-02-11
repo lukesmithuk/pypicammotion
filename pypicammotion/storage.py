@@ -99,6 +99,15 @@ class StorageManager:
                 except OSError:
                     log.warning("storage: failed to evict %s", oldest)
 
+    def status(self) -> dict:
+        """Return storage stats for heartbeat reporting."""
+        with self._lock:
+            return {
+                "clips": len(self._clips),
+                "used_mb": round(self._total_bytes / 1_048_576, 1),
+                "max_mb": round(self._max_bytes / 1_048_576, 1),
+            }
+
     def _remove_empty_parents(self, d: Path) -> None:
         """Remove empty directories up to (but not including) base_path."""
         while d != self._base and d.is_dir():

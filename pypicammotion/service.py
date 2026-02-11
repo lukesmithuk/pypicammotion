@@ -28,9 +28,11 @@ class Service:
         self._config = config
         self._stop_event = threading.Event()
         self._cameras: list[Camera] = []
+        self._camera_names: list[str] = []
         self._storage: StorageManager | None = None
         self._notifier: MqttNotifier | None = None
         self._audio: AudioCapture | None = None
+        self._start_time: float = 0.0
 
     def run(self) -> None:
         self._install_signals()
@@ -71,6 +73,7 @@ class Service:
                 stop_event=self._stop_event,
             )
             self._cameras.append(cam)
+            self._camera_names.append(name)
             try:
                 cam.start()
                 log.info("started camera '%s' (device %d)", name, cam_cfg.device)
@@ -85,14 +88,49 @@ class Service:
 
         log.info("service running with %d camera(s)", len(self._cameras))
 
+        self._start_time = time.monotonic()
+        interval = self._config.mqtt.heartbeat_interval
+
+        # Publish initial online status
+        if self._notifier and interval > 0:
+            self._publish_status()
+
         # Block until shutdown
         try:
+            heartbeat_due = 0.0
             while not self._stop_event.is_set():
                 self._stop_event.wait(1.0)
+                if self._notifier and interval > 0:
+                    heartbeat_due += 1.0
+                    if heartbeat_due >= interval:
+                        self._publish_status()
+                        heartbeat_due = 0.0
         except KeyboardInterrupt:
             pass
 
         self._shutdown()
+
+    def _build_status(self) -> dict:
+        cameras = {}
+        for name, cam in zip(self._camera_names, self._cameras):
+            cameras[name] = cam.status()
+        payload: dict = {
+            "status": "online",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "uptime_seconds": round(time.monotonic() - self._start_time),
+            "cameras": cameras,
+        }
+        if self._storage:
+            payload["storage"] = self._storage.status()
+        payload["features"] = {
+            "audio": self._audio is not None,
+            "mqtt": self._notifier is not None,
+        }
+        return payload
+
+    def _publish_status(self) -> None:
+        if self._notifier:
+            self._notifier.publish_status(self._build_status())
 
     def _on_clip_saved(
         self,
@@ -131,5 +169,5 @@ class Service:
         if self._audio:
             self._audio.stop()
         if self._notifier:
-            self._notifier.stop()
+            self._notifier.stop()  # publishes offline status before disconnecting
         log.info("shutdown complete")

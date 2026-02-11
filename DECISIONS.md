@@ -166,3 +166,26 @@ audio approach.
 that integrates well with a rolling buffer design. It's an optional
 dependency (`poetry install -E audio`) with a guarded import, following the
 same pattern as paho-mqtt. Requires `libportaudio2` system package.
+
+## Heartbeat: MQTT retained status, not HTTP
+
+**Problem**: No way to know if the service is alive between clip events.
+Monitoring dashboards and alerting need a periodic signal.
+
+**Solution**: Periodic MQTT heartbeat on `{prefix}/status` with retained
+messages (`qos=1, retain=True`). Payloads include camera states, storage
+usage, uptime, and feature flags. An `online` status is published on start
+and every `heartbeat_interval` seconds (default 30, configurable, 0 to
+disable). An `offline` status is published (also retained) on shutdown.
+
+New subscribers immediately receive the last known state via the retained
+message — no need to wait for the next heartbeat cycle.
+
+Start and stop notifications are the first and last heartbeat respectively,
+sharing the same topic and payload format.
+
+**Alternative considered**: HTTP health endpoint. Rejected because the
+service already depends on MQTT for notifications, and adding an HTTP
+server would introduce a new dependency and attack surface. MQTT retained
+messages provide equivalent functionality (last-known-state on subscribe)
+without an extra listener.
