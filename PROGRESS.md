@@ -3,9 +3,10 @@
 ## Current State
 
 **Branch**: `implement-full-package` (pushed to origin)
-**Status**: Core implementation complete with audio support. All modules
-functional. Full manual test plan passed (all 10 sections). Three bugs
-found during testing and fixed.
+**Status**: Core implementation complete with audio support, clip metadata,
+motion score logging, and MQTT heartbeat. All modules functional. Full
+manual test plan passed (all 12 sections). Three bugs found during testing
+and fixed.
 
 ## What's Done
 
@@ -106,6 +107,11 @@ found during testing and fixed.
 ## Commit History
 
 ```
+8ecff37 Add MQTT heartbeat with service start/stop notifications
+129d32e Embed metadata in saved MP4 clips via PyAV container remux
+013b394 Add motion score logging at state transitions
+dcffcba Mark all manual test items as passed
+63a4f62 Update docs after completing full manual test plan
 a4a7e13 Add audio recording via post-mux onto saved clips
 88ece19 Add storage mount validation for USB drives
 7d458e7 Add USB storage support to TODO list
