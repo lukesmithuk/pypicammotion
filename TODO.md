@@ -52,6 +52,12 @@
   (e.g. via PyAV). Needs config options for audio device selection and
   enable/disable per camera.
 
+- [ ] **USB storage support** — allow clips to be saved to a mounted USB drive
+  instead of (or in addition to) the SD card. Needs auto-detection of USB block
+  devices, configurable mount point in config, and fallback behaviour if the
+  drive is removed or full. StorageManager would need to handle the USB path
+  and quota independently.
+
 - [ ] **Rate limiting on motion events** — if a camera triggers constantly
   (e.g. a tree blowing in the wind), clips pile up quickly. Could add a
   minimum cooldown between recordings or a max-clips-per-hour limit.
