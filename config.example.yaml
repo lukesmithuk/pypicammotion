@@ -2,10 +2,13 @@
 # Copy to /etc/pypicammotion/config.yaml and edit to taste.
 
 storage:
-  # Where to save motion clips
-  path: /var/lib/pypicammotion/clips
+  # Where to save motion clips (supports any mounted filesystem including USB)
+  path: /mnt/usb/clips
   # Maximum total storage in GB — oldest clips evicted first
-  max_gb: 10.0
+  max_gb: 200.0
+  # Set to true when using an external/USB drive — the service will refuse to
+  # start if the path is on the root filesystem (i.e. the drive isn't mounted)
+  require_mount: true
 
 mqtt:
   # Set enabled: true to publish clip events via MQTT

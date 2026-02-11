@@ -427,7 +427,100 @@ with tempfile.TemporaryDirectory() as d:
 - [ ] `date dir exists: False` (empty, removed)
 - [ ] `cam dir exists: False` (empty, removed)
 
-### 3.5 Creates base path if missing
+### 3.5 Mount validation — rejects root filesystem when require_mount is true
+
+Use a path on the root filesystem (not `/tmp` which is tmpfs on some systems):
+
+```bash
+python3 -c "
+from pypicammotion.storage import StorageManager
+try:
+    sm = StorageManager('/var/lib/test-mount-clips', max_bytes=100_000, require_mount=True)
+    print('ERROR: should have raised RuntimeError')
+except RuntimeError as e:
+    print(f'correctly rejected: {e}')
+"
+```
+
+- [ ] Raises `RuntimeError` mentioning "root filesystem" and "is the external drive mounted?"
+- [ ] Message includes the storage path and suggests `require_mount: false`
+
+### 3.6 Mount validation — accepts USB mount
+
+```bash
+python3 -c "
+from pypicammotion.storage import StorageManager
+sm = StorageManager('/mnt/usb/test-clips', max_bytes=100_000, require_mount=True)
+print('accepted: /mnt/usb is a non-root mount')
+"
+```
+
+- [ ] Logs `storage: mount validated — /mnt/usb/test-clips is on /mnt/usb`
+- [ ] Does not raise
+
+### 3.7 Mount validation — skipped when require_mount is false
+
+```bash
+python3 -c "
+from pypicammotion.storage import StorageManager
+sm = StorageManager('/tmp/test-no-mount', max_bytes=100_000, require_mount=False)
+print('accepted without mount validation')
+"
+```
+
+- [ ] No error, no mount validation log message
+
+### 3.8 Config loading — require_mount parsed from YAML
+
+```bash
+cat > /tmp/mount-cfg.yaml << 'EOF'
+storage:
+  path: /mnt/usb/clips
+  max_gb: 200.0
+  require_mount: true
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/mount-cfg.yaml')
+print(f'path: {cfg.storage.path}')
+print(f'require_mount: {cfg.storage.require_mount}')
+"
+```
+
+- [ ] Prints `path: /mnt/usb/clips`
+- [ ] Prints `require_mount: True`
+
+### 3.9 Config with require_mount — rejects unmounted path end-to-end
+
+```bash
+cat > /tmp/mount-reject-cfg.yaml << 'EOF'
+storage:
+  path: /var/lib/pypicammotion/clips
+  max_gb: 10.0
+  require_mount: true
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+from pypicammotion.storage import StorageManager
+cfg = load_config('/tmp/mount-reject-cfg.yaml')
+try:
+    sm = StorageManager(cfg.storage.path, cfg.storage.max_bytes, require_mount=cfg.storage.require_mount)
+    print('ERROR: should have raised RuntimeError')
+except RuntimeError as e:
+    print(f'correctly rejected: {e}')
+"
+```
+
+- [ ] Raises `RuntimeError` mentioning "root filesystem" and "is the external drive mounted?"
+- [ ] Demonstrates the full config → StorageManager validation path
+
+### 3.10 Creates base path if missing
 
 ```bash
 python3 -c "

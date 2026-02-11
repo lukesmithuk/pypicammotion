@@ -11,14 +11,33 @@ log = logging.getLogger(__name__)
 class StorageManager:
     """Track clip files and enforce a disk quota by evicting oldest clips first."""
 
-    def __init__(self, base_path: str | Path, max_bytes: int) -> None:
+    def __init__(
+        self, base_path: str | Path, max_bytes: int, require_mount: bool = False
+    ) -> None:
         self._base = Path(base_path)
         self._max_bytes = max_bytes
         self._lock = threading.Lock()
         # Sorted list of (mtime, path) — oldest first
         self._clips: list[tuple[float, Path]] = []
         self._total_bytes: int = 0
+
+        if require_mount:
+            self._validate_mount()
+
         self._scan()
+
+    def _validate_mount(self) -> None:
+        """Check that base_path is on a non-root mount (e.g. USB drive)."""
+        p = self._base.resolve()
+        while not p.is_mount():
+            p = p.parent
+        if p == Path("/"):
+            raise RuntimeError(
+                f"storage path {self._base} is on the root filesystem — "
+                f"is the external drive mounted? "
+                f"(set require_mount: false to disable this check)"
+            )
+        log.info("storage: mount validated — %s is on %s", self._base, p)
 
     def _scan(self) -> None:
         """Walk base_path on startup and index existing .mp4 files."""

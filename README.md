@@ -45,6 +45,7 @@ See [`config.example.yaml`](config.example.yaml) for a fully commented example. 
 |---|---|---|
 | `storage.path` | `/var/lib/pypicammotion/clips` | Where clips are saved (supports `~`) |
 | `storage.max_gb` | `10.0` | Disk quota — oldest clips evicted first |
+| `storage.require_mount` | `false` | Refuse to start if path is on root filesystem (for USB drives) |
 | `cameras.*.device` | `0` | Camera index from `list-cameras` |
 | `cameras.*.resolution` | `[1920, 1080]` | Recording resolution |
 | `cameras.*.fps` | `30` | Framerate |

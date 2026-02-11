@@ -35,7 +35,9 @@ class Service:
 
         # Storage
         self._storage = StorageManager(
-            self._config.storage.path, self._config.storage.max_bytes
+            self._config.storage.path,
+            self._config.storage.max_bytes,
+            require_mount=self._config.storage.require_mount,
         )
 
         # MQTT (optional)

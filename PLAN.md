@@ -49,7 +49,7 @@ pypicammotion/
 
 **`config.py`** — Dataclasses for configuration:
 - `CameraConfig`: name, device (int), resolution, lores_resolution, fps, pre_motion_seconds, post_motion_seconds, sensitivity (0.0–1.0), min_contour_area, blur_kernel
-- `StorageConfig`: path (tilde-expanded via `expanduser()`), max_gb
+- `StorageConfig`: path (tilde-expanded via `expanduser()`), max_gb, require_mount (validates path is on a non-root mount at startup — for USB/external drives)
 - `MqttConfig`: broker, port, topic_prefix, enabled
 - `AppConfig`: storage, mqtt, cameras dict
 - `load_config(path) -> AppConfig` with defaults and validation

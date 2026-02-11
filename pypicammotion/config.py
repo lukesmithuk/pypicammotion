@@ -27,6 +27,7 @@ class CameraConfig:
 class StorageConfig:
     path: str = "/var/lib/pypicammotion/clips"
     max_gb: float = 10.0
+    require_mount: bool = False
 
     @property
     def max_bytes(self) -> int:
@@ -67,6 +68,7 @@ def load_config(path: str | Path) -> AppConfig:
     storage = StorageConfig(
         path=storage_path,
         max_gb=float(storage_raw.get("max_gb", StorageConfig.max_gb)),
+        require_mount=bool(storage_raw.get("require_mount", StorageConfig.require_mount)),
     )
 
     mqtt_raw = raw.get("mqtt", {})

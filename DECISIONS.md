@@ -88,6 +88,22 @@ is wrapped in a `try/except ImportError`. If not installed, a warning is
 logged and the service runs without notifications. The broker connection uses
 paho-mqtt's built-in auto-reconnect mechanism.
 
+## USB/external storage: mount validation, not auto-detection
+
+**Problem**: If a user configures `storage.path` to point at a USB mount (e.g.
+`/mnt/usb/clips`) and the drive isn't mounted, the service silently creates
+directories on the root filesystem, wasting SD card space.
+
+**Solution**: Optional `require_mount: true` config flag. When set,
+`StorageManager` resolves the storage path, walks up to find its mount point
+via `Path.is_mount()`, and raises `RuntimeError` if the mount point is `/`.
+The error message names the path and suggests checking the drive mount.
+
+**Alternative considered**: Auto-detecting USB block devices and auto-mounting.
+Rejected as over-engineered — users already manage mounts via `fstab` or
+`udisks2`. The existing `storage.path` config already supports any filesystem
+path; mount validation just adds a safety check.
+
 ## Storage: in-memory sorted list, disk scan on startup
 
 Clips are append-only and evicted FIFO (oldest first). A simple sorted list

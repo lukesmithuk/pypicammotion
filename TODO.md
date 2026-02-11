@@ -15,6 +15,8 @@
   synthetic files, not verified with real clips under quota pressure)
 - [ ] Behaviour with paho-mqtt uninstalled (graceful degradation path)
 - [ ] MQTT broker disconnect/reconnect during live service
+- [ ] Full service run with USB storage (`require_mount: true`, clips saving
+  to `/mnt/usb`)
 
 ## Future Improvements
 
@@ -52,11 +54,10 @@
   (e.g. via PyAV). Needs config options for audio device selection and
   enable/disable per camera.
 
-- [ ] **USB storage support** — allow clips to be saved to a mounted USB drive
-  instead of (or in addition to) the SD card. Needs auto-detection of USB block
-  devices, configurable mount point in config, and fallback behaviour if the
-  drive is removed or full. StorageManager would need to handle the USB path
-  and quota independently.
+- [x] **USB storage support** — `storage.path` can point to any mounted
+  filesystem including USB drives. Added `require_mount: true` config option
+  that validates the storage path is on a non-root mount at startup, preventing
+  silent writes to the SD card when a USB drive isn't mounted.
 
 - [ ] **Rate limiting on motion events** — if a camera triggers constantly
   (e.g. a tree blowing in the wind), clips pile up quickly. Could add a

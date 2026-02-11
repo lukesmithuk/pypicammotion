@@ -63,8 +63,15 @@ found during testing and fixed.
 - [x] SIGTERM clean shutdown — clips saved, MQTT disconnected, cameras closed
 - [x] Clip files are valid playable MP4
 
+### Features
+
+| Commit | Feature | Description |
+|---|---|---|
+| — | USB/external storage mount validation | `require_mount: true` config option checks storage path is on a non-root mount at startup |
+
 ### Not Yet Tested
 
+- [x] `require_mount` validation with USB drive at `/mnt/usb`
 - [ ] systemd deployment
 - [ ] Storage quota eviction with real clips
 - [ ] MQTT broker disconnect/reconnect
