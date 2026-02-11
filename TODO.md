@@ -46,6 +46,12 @@
 - [ ] **Notification on service start/stop** — MQTT message when the service
   starts or stops, not just on clip saves.
 
+- [ ] **Audio recording** — capture audio alongside video in saved clips.
+  Requires attaching a USB microphone or I2S mic, recording via ALSA/PulseAudio,
+  and muxing the audio stream into the MP4 output alongside the H.264 video
+  (e.g. via PyAV). Needs config options for audio device selection and
+  enable/disable per camera.
+
 - [ ] **Rate limiting on motion events** — if a camera triggers constantly
   (e.g. a tree blowing in the wind), clips pile up quickly. Could add a
   minimum cooldown between recordings or a max-clips-per-hour limit.
