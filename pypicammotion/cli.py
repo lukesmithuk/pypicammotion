@@ -42,7 +42,7 @@ def cmd_test(args: argparse.Namespace) -> None:
 
     stop_event = threading.Event()
 
-    def on_clip(camera: str, path: Path, ts: datetime, dur: float) -> None:
+    def on_clip(camera: str, path: Path, ts: datetime, dur: float, start_mono: float | None = None) -> None:
         print(f"  clip saved: {path} ({dur:.1f}s)")
 
     cam = Camera(

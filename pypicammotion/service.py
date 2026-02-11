@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from .audio import AudioCapture
 from .camera import Camera
 from .config import AppConfig
 from .notifier import MqttNotifier
@@ -29,6 +30,7 @@ class Service:
         self._cameras: list[Camera] = []
         self._storage: StorageManager | None = None
         self._notifier: MqttNotifier | None = None
+        self._audio: AudioCapture | None = None
 
     def run(self) -> None:
         self._install_signals()
@@ -48,6 +50,16 @@ class Service:
                 self._config.mqtt.topic_prefix,
             )
             self._notifier.start()
+
+        # Audio (optional)
+        if self._config.audio.enabled:
+            self._audio = AudioCapture(
+                device=self._config.audio.device,
+                sample_rate=self._config.audio.sample_rate,
+                channels=self._config.audio.channels,
+                buffer_seconds=self._config.audio.buffer_seconds,
+            )
+            self._audio.start()
 
         # Start cameras sequentially
         for name, cam_cfg in self._config.cameras.items():
@@ -83,8 +95,21 @@ class Service:
         self._shutdown()
 
     def _on_clip_saved(
-        self, camera: str, path: Path, timestamp: datetime, duration: float
+        self,
+        camera: str,
+        path: Path,
+        timestamp: datetime,
+        duration: float,
+        start_mono: float | None = None,
     ) -> None:
+        # Mux audio before registering with storage (file size may change)
+        if (
+            self._audio
+            and start_mono is not None
+            and self._config.cameras[camera].audio
+        ):
+            pre = self._config.cameras[camera].pre_motion_seconds
+            self._audio.enqueue_mux(path, start_mono - pre, duration + pre)
         if self._storage:
             self._storage.register_clip(path)
         if self._notifier:
@@ -103,6 +128,8 @@ class Service:
         log.info("stopping cameras…")
         for cam in self._cameras:
             cam.stop()
+        if self._audio:
+            self._audio.stop()
         if self._notifier:
             self._notifier.stop()
         log.info("shutdown complete")

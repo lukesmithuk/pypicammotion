@@ -17,7 +17,7 @@ from .motion import MotionDetector
 
 log = logging.getLogger(__name__)
 
-ClipCallback = Callable[[str, Path, datetime, float], None]
+ClipCallback = Callable[[str, Path, datetime, float, float | None], None]
 
 
 class State(enum.Enum):
@@ -48,6 +48,7 @@ class Camera:
         self._state = State.IDLE
         self._tail_deadline: float = 0.0
         self._recording_start: datetime | None = None
+        self._recording_start_mono: float | None = None
         self._current_clip: Path | None = None
 
         self._picam: Picamera2 | None = None
@@ -162,6 +163,7 @@ class Camera:
     def _start_recording(self) -> None:
         ts = datetime.now()
         self._recording_start = ts
+        self._recording_start_mono = time.monotonic()
         self._current_clip = self._clip_path(ts)
         log.info("[%s] motion started — recording to %s", self.config.name, self._current_clip)
 
@@ -173,6 +175,7 @@ class Camera:
         name = self.config.name
         clip = self._current_clip
         start = self._recording_start
+        start_mono = self._recording_start_mono
 
         try:
             # stop() flushes all buffered frames then closes the output.
@@ -186,6 +189,7 @@ class Camera:
         self._tail_deadline = 0.0
         self._current_clip = None
         self._recording_start = None
+        self._recording_start_mono = None
 
         if clip and start and clip.exists():
             duration = (datetime.now() - start).total_seconds()
@@ -193,7 +197,7 @@ class Camera:
             log.info("[%s] clip saved: %s (%.1fs, %.0f KB)", name, clip, duration, size_kb)
             if self._on_clip_saved:
                 try:
-                    self._on_clip_saved(name, clip, start, duration)
+                    self._on_clip_saved(name, clip, start, duration, start_mono)
                 except Exception:
                     log.exception("[%s] on_clip_saved callback error", name)
         else:

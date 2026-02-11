@@ -110,3 +110,41 @@ Clips are append-only and evicted FIFO (oldest first). A simple sorted list
 of `(mtime, path)` tuples is sufficient — no database needed. On startup,
 `StorageManager` walks the base path and indexes all existing `.mp4` files.
 Empty parent directories are cleaned up after eviction.
+
+## Audio: post-mux, not inline recording
+
+**Problem**: The cameras record via picamera2's CircularOutput2 + PyavOutput
+pipeline, which writes video-only MP4s. There's one USB microphone shared
+across two cameras.
+
+**Solution**: Post-mux approach. A single `AudioCapture` thread records
+continuously from the mic into a rolling `deque` of timestamped PCM chunks
+(using `sounddevice`). After each video clip is saved, a background mux
+worker extracts matching audio from the buffer (aligned by
+`time.monotonic()` timestamps) and remuxes it onto the MP4: the video stream
+is codec-copied (no re-encode) and the audio is encoded as AAC via PyAV.
+The original file is atomically replaced with `os.replace()`.
+
+**Failure isolation**: Audio failures never affect video. If the mic isn't
+available or muxing fails, the original video-only MP4 is left intact.
+
+**Pre-motion audio**: The audio extraction starts at
+`start_mono - pre_motion_seconds` so the audio covers the same pre-motion
+buffer as the video.
+
+**Per-camera toggle**: Global `audio.enabled` controls whether capture runs.
+Each camera has an `audio: true/false` flag (default true) to opt out of
+muxing.
+
+**Alternative considered**: Recording audio inline by creating a custom
+picamera2 output that interleaves audio and video packets. Rejected because
+picamera2's encoder pipeline doesn't support audio streams, and modifying
+CircularOutput2 would be fragile. Post-mux is simpler and keeps the video
+pipeline completely untouched.
+
+## Audio library: sounddevice (PortAudio)
+
+`sounddevice` is a thin wrapper around PortAudio with a callback-based API
+that integrates well with a rolling buffer design. It's an optional
+dependency (`poetry install -E audio`) with a guarded import, following the
+same pattern as paho-mqtt. Requires `libportaudio2` system package.

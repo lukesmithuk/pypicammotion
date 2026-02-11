@@ -12,6 +12,11 @@ pypicammotion — motion-detection video recording service for Raspberry Pi came
 # Install dependencies (Poetry 2.x, installed via pipx)
 poetry install                    # core deps only
 poetry install --extras mqtt      # include paho-mqtt
+poetry install --extras audio     # include sounddevice (requires libportaudio2)
+
+# Check system dependencies
+./check-deps.sh                  # core only
+./check-deps.sh --audio          # include audio deps
 
 # Run the service
 poetry run pypicammotion run --config /path/to/config.yaml
@@ -36,6 +41,7 @@ The service follows a **one-thread-per-camera** model with a shared storage mana
 cli.py → Service → Camera(s) → MotionDetector
            │                        ↓ (pre_callback on lores stream)
            ├── StorageManager  ← registers clips, enforces disk quota
+           ├── AudioCapture    ← optional, post-mux audio onto saved clips
            └── MqttNotifier    ← optional, publishes clip-saved events
 ```
 
@@ -52,6 +58,7 @@ cli.py → Service → Camera(s) → MotionDetector
 - Cameras start sequentially with 1s delay to avoid libcamera init races
 - `stop()+start()` (not `close_output()`) to flush circular buffer on clip save
 - paho-mqtt is an optional dependency with graceful ImportError handling
+- Audio is post-muxed: a shared AudioCapture thread records to a rolling buffer, then a background worker muxes AAC audio onto each saved MP4 via PyAV (codec-copy video + encode audio). Per-camera `audio` toggle. sounddevice is an optional dependency with guarded import
 
 ## Key Files
 
@@ -62,13 +69,16 @@ cli.py → Service → Camera(s) → MotionDetector
 | `pypicammotion/camera.py` | Camera thread, state machine, recording logic |
 | `pypicammotion/motion.py` | Frame differencing motion detector |
 | `pypicammotion/storage.py` | Disk quota enforcement, oldest-first eviction |
+| `pypicammotion/audio.py` | Optional audio capture + post-mux onto clips |
 | `pypicammotion/notifier.py` | Optional MQTT notifications |
 | `pypicammotion/config.py` | YAML config loading, dataclasses, validation |
 | `config.example.yaml` | Annotated example configuration |
+| `check-deps.sh` | System (non-Python) dependency checker |
 | `systemd/pypicammotion.service` | systemd unit for deployment |
 
 ## Environment Notes
 
 - Python is externally-managed (PEP 668) — use `pipx` for global tools, `poetry` for project deps
 - `libcap-dev` must be installed for `python-prctl` (transitive dep of picamera2)
+- `libportaudio2` must be installed for audio capture (sounddevice)
 - Clip storage path: `{storage}/{camera_name}/{YYYY-MM-DD}/{HH-MM-SS}.mp4`

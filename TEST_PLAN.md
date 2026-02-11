@@ -16,16 +16,19 @@ print(f'storage path: {cfg.storage.path}')
 print(f'storage max_gb: {cfg.storage.max_gb}')
 print(f'storage max_bytes: {cfg.storage.max_bytes}')
 print(f'mqtt enabled: {cfg.mqtt.enabled}')
+print(f'audio enabled: {cfg.audio.enabled}')
+print(f'audio: device={cfg.audio.device} rate={cfg.audio.sample_rate} ch={cfg.audio.channels} buf={cfg.audio.buffer_seconds}s')
 print(f'cameras: {list(cfg.cameras.keys())}')
 for name, cam in cfg.cameras.items():
     print(f'  {name}: device={cam.device} res={cam.resolution} lores={cam.lores_resolution} '
-          f'fps={cam.fps} sens={cam.sensitivity} pre={cam.pre_motion_seconds}s post={cam.post_motion_seconds}s')
+          f'fps={cam.fps} sens={cam.sensitivity} pre={cam.pre_motion_seconds}s post={cam.post_motion_seconds}s audio={cam.audio}')
 "
 ```
 
-- [ ] Prints storage path `/var/lib/pypicammotion/clips`, max_gb `10.0`
-- [ ] max_bytes equals `10 * 1073741824`
+- [ ] Prints storage path `/mnt/usb/clips`, max_gb `200.0`
+- [ ] max_bytes equals `200 * 1073741824` (214748364800)
 - [ ] MQTT shows `enabled: False`
+- [ ] Audio shows `enabled: False`
 - [ ] Camera `front` listed with expected defaults from `config.example.yaml`
 
 ### 1.2 Tilde expansion in storage path
@@ -125,6 +128,65 @@ load_config('/tmp/bad-type.yaml')
 ```
 
 - [ ] Raises `ValueError` mentioning `config file must be a YAML mapping`
+
+### 1.8 Audio config parsing
+
+```bash
+cat > /tmp/audio-cfg.yaml << 'EOF'
+audio:
+  enabled: true
+  device: 2
+  sample_rate: 48000
+  channels: 1
+  buffer_seconds: 20.0
+cameras:
+  front:
+    device: 0
+  back:
+    device: 1
+    audio: false
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/audio-cfg.yaml')
+print(f'audio enabled: {cfg.audio.enabled}')
+print(f'audio device: {cfg.audio.device} (type={type(cfg.audio.device).__name__})')
+print(f'audio rate: {cfg.audio.sample_rate}')
+print(f'audio channels: {cfg.audio.channels}')
+print(f'audio buffer: {cfg.audio.buffer_seconds}')
+for name, cam in cfg.cameras.items():
+    print(f'  {name}: audio={cam.audio}')
+"
+```
+
+- [ ] `audio enabled: True`
+- [ ] `audio device: 2 (type=int)` — numeric string converted to int
+- [ ] `audio rate: 48000`, `channels: 1`, `buffer: 20.0`
+- [ ] Camera `front`: `audio=True` (default)
+- [ ] Camera `back`: `audio=False` (explicitly disabled)
+
+### 1.9 Audio config defaults
+
+```bash
+cat > /tmp/audio-defaults.yaml << 'EOF'
+cameras:
+  cam0:
+    device: 0
+EOF
+python3 -c "
+from pypicammotion.config import load_config
+cfg = load_config('/tmp/audio-defaults.yaml')
+print(f'audio enabled: {cfg.audio.enabled}')
+print(f'audio device: {cfg.audio.device}')
+print(f'audio rate: {cfg.audio.sample_rate}')
+print(f'cam0 audio: {cfg.cameras[\"cam0\"].audio}')
+"
+```
+
+- [ ] `audio enabled: False` (default)
+- [ ] `audio device: None` (default)
+- [ ] `audio rate: 48000` (default)
+- [ ] `cam0 audio: True` (default — all cameras get audio unless disabled)
 
 ---
 
@@ -716,9 +778,226 @@ pypicammotion test --camera 99 --output-dir /tmp/cam-bad 2>&1
 
 ---
 
-## 6. service.py — Multi-Camera Orchestrator
+## 6. audio.py — Audio Capture & Post-Mux
 
-### 6.1 Run with example config (single camera)
+*Prerequisites: `sudo apt install libportaudio2` and `poetry install --extras audio`. A USB microphone must be connected.*
+
+### 6.1 Graceful degradation without sounddevice
+
+```bash
+python3 -c "
+from pypicammotion.audio import _HAS_SOUNDDEVICE, _HAS_AV, AudioCapture
+print(f'sounddevice available: {_HAS_SOUNDDEVICE}')
+print(f'PyAV available: {_HAS_AV}')
+
+ac = AudioCapture()
+ac.start()   # should log warning, not crash
+print(f'is_available: {ac.is_available()}')
+ac.enqueue_mux('/tmp/fake.mp4', 0.0, 5.0)  # no-op when unavailable
+ac.stop()
+print('no crash')
+"
+```
+
+- [ ] If sounddevice not installed: `sounddevice available: False`, logs warning, `is_available: False`
+- [ ] If sounddevice installed but PyAV missing: logs warning, `is_available: False`
+- [ ] No crash in either case
+
+### 6.2 List audio devices
+
+```bash
+python -m sounddevice
+```
+
+- [ ] Lists available audio devices with device indices
+- [ ] USB mic appears (e.g. "USB PnP Sound Device")
+
+### 6.3 Audio capture and extract
+
+*Requires sounddevice installed and a working mic.*
+
+```bash
+python3 -c "
+import time
+from pypicammotion.audio import AudioCapture
+
+ac = AudioCapture(device=None, sample_rate=48000, channels=1, buffer_seconds=10.0)
+ac.start()
+print(f'is_available: {ac.is_available()}')
+time.sleep(3)
+
+now = time.monotonic()
+pcm = ac.extract(now - 2.0, 2.0)
+if pcm is not None:
+    print(f'extracted {len(pcm)} samples ({len(pcm)/48000:.2f}s)')
+    print(f'shape: {pcm.shape}, dtype: {pcm.dtype}')
+    print(f'peak amplitude: {abs(pcm).max():.4f}')
+else:
+    print('ERROR: no audio data extracted')
+ac.stop()
+"
+```
+
+- [ ] `is_available: True`
+- [ ] Extracts ~96000 samples (2 seconds at 48 kHz)
+- [ ] Shape is `(N, 1)`, dtype is `float32`
+- [ ] Peak amplitude > 0 (if there's any ambient noise)
+
+### 6.4 Extract with no data in range
+
+```bash
+python3 -c "
+import time
+from pypicammotion.audio import AudioCapture
+
+ac = AudioCapture(sample_rate=48000, channels=1, buffer_seconds=5.0)
+ac.start()
+time.sleep(0.5)
+
+# Request audio from far in the past (outside buffer)
+pcm = ac.extract(0.0, 1.0)
+print(f'extract from past: {pcm}')
+
+ac.stop()
+"
+```
+
+- [ ] Returns `None` — requested time range is outside the rolling buffer
+
+### 6.5 Mux audio onto a video-only MP4
+
+*Requires PyAV installed. Uses a real video-only MP4 clip.*
+
+First, generate a test clip:
+```bash
+pypicammotion test --camera 0 --sensitivity 0.001 --output-dir /tmp/mux-test
+# Ctrl+C after one clip is saved
+```
+
+Then mux audio onto it:
+```bash
+python3 -c "
+import time, numpy as np
+from pathlib import Path
+from pypicammotion.audio import mux_audio_onto_mp4
+
+# Find the test clip
+clips = sorted(Path('/tmp/mux-test').rglob('*.mp4'))
+if not clips:
+    print('ERROR: no test clips found — run pypicammotion test first')
+    exit(1)
+clip = clips[0]
+print(f'clip: {clip}')
+
+# Generate 5 seconds of 440 Hz sine wave as test audio
+sr = 48000
+duration = 5.0
+t = np.linspace(0, duration, int(sr * duration), dtype=np.float32)
+pcm = (0.5 * np.sin(2 * np.pi * 440 * t)).reshape(-1, 1)
+
+size_before = clip.stat().st_size
+mux_audio_onto_mp4(clip, pcm, sr, 1)
+size_after = clip.stat().st_size
+print(f'size before: {size_before}, after: {size_after}')
+print(f'audio added: {size_after > size_before}')
+"
+```
+
+Verify the result:
+```bash
+ffprobe /tmp/mux-test/test/*/*.mp4 2>&1 | grep -E "Stream|Duration"
+```
+
+- [ ] `mux_audio_onto_mp4` completes without error
+- [ ] File size increased (audio data added)
+- [ ] `ffprobe` shows both a video stream (H.264) and an audio stream (AAC)
+- [ ] Playing the clip produces a 440 Hz tone
+
+### 6.6 Mux failure leaves original intact
+
+```bash
+python3 -c "
+import numpy as np
+from pathlib import Path
+from pypicammotion.audio import mux_audio_onto_mp4
+
+# Create a fake (invalid) MP4 file
+fake = Path('/tmp/fake-mux-test.mp4')
+fake.write_bytes(b'not a real mp4 file')
+original_content = fake.read_bytes()
+
+pcm = np.zeros((48000, 1), dtype=np.float32)
+try:
+    mux_audio_onto_mp4(fake, pcm, 48000, 1)
+    print('ERROR: should have raised an exception')
+except Exception as e:
+    print(f'correctly failed: {type(e).__name__}')
+
+# Original should be untouched
+print(f'original intact: {fake.read_bytes() == original_content}')
+
+import glob
+temps = glob.glob('/tmp/fake-mux-test*.mp4')
+# Only the original should remain
+print(f'temp files cleaned up: {len(temps) == 1}')
+fake.unlink()
+"
+```
+
+- [ ] Raises an exception (can't open invalid MP4)
+- [ ] Original file is untouched
+- [ ] No temp files left behind
+
+### 6.7 Enqueue mux (integration with worker thread)
+
+```bash
+python3 -c "
+import time, numpy as np
+from pathlib import Path
+from pypicammotion.audio import AudioCapture
+
+ac = AudioCapture(sample_rate=48000, channels=1, buffer_seconds=10.0)
+ac.start()
+if not ac.is_available():
+    print('audio not available — skipping')
+    exit(0)
+
+time.sleep(2)
+
+# Create a test clip first
+clips = sorted(Path('/tmp/mux-test').rglob('*.mp4'))
+if not clips:
+    print('no test clips — run pypicammotion test first')
+    ac.stop()
+    exit(1)
+
+import shutil
+test_clip = Path('/tmp/mux-worker-test.mp4')
+shutil.copy2(clips[0], test_clip)
+
+mono_now = time.monotonic()
+ac.enqueue_mux(test_clip, mono_now - 1.5, 1.5)
+time.sleep(3)  # wait for worker to process
+ac.stop()
+
+# Verify audio was muxed
+import subprocess
+result = subprocess.run(['ffprobe', '-v', 'error', '-show_streams', str(test_clip)],
+                       capture_output=True, text=True)
+has_audio = 'codec_type=audio' in result.stdout
+print(f'audio stream present: {has_audio}')
+test_clip.unlink()
+"
+```
+
+- [ ] Worker thread picks up the job and muxes audio
+- [ ] `ffprobe` confirms audio stream is present in the output file
+
+---
+
+## 7. service.py — Multi-Camera Orchestrator
+
+### 7.1 Run with example config (single camera)
 
 ```bash
 cat > /tmp/svc-test.yaml << 'EOF'
@@ -737,7 +1016,7 @@ pypicammotion run --config /tmp/svc-test.yaml
 - [ ] Logs `service running with 1 camera(s)`
 - [ ] Motion triggers recording and clips appear in `/tmp/svc-clips/front/`
 
-### 6.2 SIGTERM clean shutdown
+### 7.2 SIGTERM clean shutdown
 
 In one terminal:
 ```bash
@@ -752,7 +1031,7 @@ wait $SVC_PID
 - [ ] Logs `stopping cameras…` then `shutdown complete`
 - [ ] Process exits with code 0
 
-### 6.3 Two cameras
+### 7.3 Two cameras
 
 *Requires two cameras connected (devices 0 and 1).*
 
@@ -777,7 +1056,7 @@ pypicammotion run --config /tmp/svc-dual.yaml
 - [ ] Motion on camera 1 saves to `/tmp/svc-dual-clips/back/`
 - [ ] Ctrl+C shuts down both cameras
 
-### 6.4 One bad device — other camera survives
+### 7.4 One bad device — other camera survives
 
 ```bash
 cat > /tmp/svc-mixed.yaml << 'EOF'
@@ -799,7 +1078,7 @@ pypicammotion run --config /tmp/svc-mixed.yaml
 - [ ] Camera `good` (device 0) continues to run and detect motion
 - [ ] Service does not crash
 
-### 6.5 Storage quota enforced during service run
+### 7.5 Storage quota enforced during service run
 
 ```bash
 cat > /tmp/svc-quota.yaml << 'EOF'
@@ -820,11 +1099,97 @@ pypicammotion run --config /tmp/svc-quota.yaml
 - [ ] Oldest clips are deleted when total exceeds ~1 MB
 - [ ] Logs show eviction messages with file paths and sizes
 
+### 7.6 Audio muxing via service
+
+*Prerequisites: `sudo apt install libportaudio2`, `poetry install --extras audio`, USB mic connected.*
+
+```bash
+cat > /tmp/svc-audio.yaml << 'EOF'
+storage:
+  path: /tmp/svc-audio-clips
+  max_gb: 0.5
+audio:
+  enabled: true
+  sample_rate: 48000
+  channels: 1
+  buffer_seconds: 15.0
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion -v run --config /tmp/svc-audio.yaml
+```
+
+1. Verify audio starts: log shows `audio capture started`
+2. Trigger motion, wait for clip to save
+3. Watch for `muxed audio onto ...` log message
+4. Ctrl+C to stop
+
+```bash
+ffprobe /tmp/svc-audio-clips/front/*/*.mp4 2>&1 | grep -E "Stream|Duration"
+```
+
+- [ ] Log shows `audio capture started (device=..., 48000Hz, 1ch)`
+- [ ] After each clip save, log shows `muxed audio onto <path>`
+- [ ] `ffprobe` shows both H.264 video and AAC audio streams
+- [ ] Playing the clip has audible audio from the mic
+
+### 7.7 Per-camera audio toggle
+
+*Requires two cameras connected (devices 0 and 1).*
+
+```bash
+cat > /tmp/svc-audio-toggle.yaml << 'EOF'
+storage:
+  path: /tmp/svc-audio-toggle-clips
+  max_gb: 0.5
+audio:
+  enabled: true
+  sample_rate: 48000
+  channels: 1
+cameras:
+  with_audio:
+    device: 0
+    sensitivity: 0.05
+    audio: true
+  without_audio:
+    device: 1
+    sensitivity: 0.05
+    audio: false
+EOF
+pypicammotion -v run --config /tmp/svc-audio-toggle.yaml
+```
+
+- [ ] Clips from `with_audio` camera have audio muxed (log shows `muxed audio onto`)
+- [ ] Clips from `without_audio` camera do NOT have audio muxed (no mux log for those clips)
+
+### 7.8 Audio disabled — no impact on video
+
+```bash
+cat > /tmp/svc-noaudio.yaml << 'EOF'
+storage:
+  path: /tmp/svc-noaudio-clips
+  max_gb: 0.5
+audio:
+  enabled: false
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion run --config /tmp/svc-noaudio.yaml
+```
+
+- [ ] No audio-related log messages
+- [ ] Video clips are saved normally (video-only)
+- [ ] Service behaves identically to before audio feature was added
+
 ---
 
-## 7. cli.py — CLI Entry Points
+## 8. cli.py — CLI Entry Points
 
-### 7.1 Help output
+### 8.1 Help output
 
 ```bash
 pypicammotion --help
@@ -836,7 +1201,7 @@ pypicammotion run --help
 - [ ] `test --help` shows `--camera`, `--sensitivity`, `--output-dir`
 - [ ] `run --help` shows `--config`
 
-### 7.2 list-cameras
+### 8.2 list-cameras
 
 ```bash
 pypicammotion list-cameras
@@ -845,7 +1210,7 @@ pypicammotion list-cameras
 - [ ] Lists all connected cameras with `[N] model  id=...`
 - [ ] Camera numbers match what `libcamera-hello --list-cameras` reports
 
-### 7.3 Verbose mode
+### 8.3 Verbose mode
 
 ```bash
 pypicammotion -v list-cameras 2>&1 | head -5
@@ -853,7 +1218,7 @@ pypicammotion -v list-cameras 2>&1 | head -5
 
 - [ ] More detailed log output (DEBUG level) appears on stderr
 
-### 7.4 No subcommand — prints help
+### 8.4 No subcommand — prints help
 
 ```bash
 pypicammotion
@@ -863,7 +1228,7 @@ echo "exit code: $?"
 - [ ] Prints usage/help text
 - [ ] Exit code is 1
 
-### 7.5 run without --config
+### 8.5 run without --config
 
 ```bash
 pypicammotion run 2>&1
@@ -875,11 +1240,11 @@ echo "exit code: $?"
 
 ---
 
-## 8. systemd Integration
+## 9. systemd Integration
 
 *Requires root access.*
 
-### 8.1 Install and start service
+### 9.1 Install and start service
 
 ```bash
 sudo mkdir -p /etc/pypicammotion
@@ -894,7 +1259,7 @@ systemctl status pypicammotion
 
 - [ ] Service shows `active (running)`
 
-### 8.2 Logs visible in journalctl
+### 9.2 Logs visible in journalctl
 
 ```bash
 journalctl -u pypicammotion -f --no-pager
@@ -903,7 +1268,7 @@ journalctl -u pypicammotion -f --no-pager
 - [ ] Startup messages visible (camera started, service running)
 - [ ] Motion events and clip saves appear in logs
 
-### 8.3 Clean stop
+### 9.3 Clean stop
 
 ```bash
 sudo systemctl stop pypicammotion
@@ -914,7 +1279,7 @@ systemctl status pypicammotion
 - [ ] Logs show `received SIGTERM`, `stopping cameras`, `shutdown complete`
 - [ ] Status shows `inactive (dead)`, not `failed`
 
-### 8.4 Restart on failure
+### 9.4 Restart on failure
 
 ```bash
 # Simulate a crash (if needed) or verify the Restart=on-failure setting:
@@ -923,7 +1288,7 @@ cat /etc/systemd/system/pypicammotion.service | grep Restart
 
 - [ ] `Restart=on-failure` and `RestartSec=5` are set
 
-### 8.5 Enable on boot
+### 9.5 Enable on boot
 
 ```bash
 sudo systemctl enable pypicammotion
@@ -935,9 +1300,9 @@ sudo systemctl is-enabled pypicammotion
 
 ---
 
-## 9. End-to-End Integration
+## 10. End-to-End Integration
 
-### 9.1 Full pipeline: config → service → clips → quota
+### 10.1 Full pipeline: config → service → clips → quota
 
 1. Create config with two cameras, small quota (50 MB), MQTT disabled
 2. `pypicammotion run --config config.yaml`
@@ -953,7 +1318,7 @@ sudo systemctl is-enabled pypicammotion
 - [ ] Old clips evicted when quota exceeded
 - [ ] No error tracebacks in output
 
-### 9.2 Full pipeline with MQTT
+### 10.2 Full pipeline with MQTT
 
 *Prerequisites: mosquitto running (`sudo apt install mosquitto mosquitto-clients`)*
 
@@ -987,3 +1352,49 @@ Trigger motion, then verify:
 - [ ] JSON payload contains `camera`, `path`, `timestamp`, `duration`
 - [ ] Kill mosquitto (`sudo systemctl stop mosquitto`) → service continues saving clips without crashing
 - [ ] Restart mosquitto (`sudo systemctl start mosquitto`) → MQTT messages resume on next clip
+
+### 10.3 Full pipeline with audio
+
+*Prerequisites: `sudo apt install libportaudio2`, `poetry install --extras audio`, USB mic connected.*
+
+```bash
+cat > /tmp/svc-full-audio.yaml << 'EOF'
+storage:
+  path: /tmp/svc-full-audio-clips
+  max_gb: 0.5
+audio:
+  enabled: true
+  sample_rate: 48000
+  channels: 1
+  buffer_seconds: 15.0
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+    pre_motion_seconds: 5.0
+    post_motion_seconds: 3.0
+EOF
+pypicammotion -v run --config /tmp/svc-full-audio.yaml
+```
+
+1. Wait for `audio capture started` and `service running` messages
+2. Trigger motion (speak or clap while moving in front of camera)
+3. Wait for clip to save and audio to mux
+4. Ctrl+C to stop
+
+Verify clips:
+```bash
+for f in /tmp/svc-full-audio-clips/front/*/*.mp4; do
+    echo "=== $f ==="
+    ffprobe -v error -show_entries stream=codec_type,codec_name,duration "$f" 2>&1
+done
+```
+
+- [ ] Each clip has both a video stream (h264) and an audio stream (aac)
+- [ ] Audio duration roughly matches video duration
+- [ ] Audio covers the pre-motion period (sound from before motion started is audible)
+- [ ] Playing clips back, audio and video are in sync
+- [ ] Logs show `muxed audio onto` for each clip
+- [ ] No audio-related error tracebacks
+- [ ] Ctrl+C shuts down cleanly: `audio capture stopped` appears in logs
+- [ ] Unplugging the USB mic mid-run does not crash the service (clips continue without audio)

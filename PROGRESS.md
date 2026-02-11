@@ -3,8 +3,8 @@
 ## Current State
 
 **Branch**: `implement-full-package` (pushed to origin)
-**Status**: Core implementation complete. All modules functional. Three bugs
-found during testing and fixed.
+**Status**: Core implementation complete with audio support. All modules
+functional. Three bugs found during testing and fixed.
 
 ## What's Done
 
@@ -21,7 +21,9 @@ found during testing and fixed.
 | `service.py` | Done | Multi-camera orchestrator, signal handling |
 | `cli.py` | Done | list-cameras, test, run subcommands |
 | `systemd/` | Done | Unit file written (not yet deployed) |
+| `audio.py` | Done | Audio capture, rolling buffer, post-mux worker |
 | `config.example.yaml` | Done | Fully commented example config |
+| `check-deps.sh` | Done | System dependency checker |
 | `README.md` | Done | Quick start, config reference, systemd, architecture |
 
 ### Bug Fixes
@@ -53,6 +55,11 @@ found during testing and fixed.
 - [x] StorageManager scan, register, eviction, empty dir cleanup (synthetic)
 - [x] MQTT notifier round-trip with mosquitto (pub/sub verified)
 - [x] CLI help, list-cameras
+- [x] Audio config parsing (device type coercion, per-camera toggle, defaults)
+- [x] AudioCapture start/stop, extract from rolling buffer
+- [x] mux_audio_onto_mp4 (codec-copy video + AAC audio, atomic replace)
+- [x] Mux failure leaves original video-only MP4 intact
+- [x] Mux worker thread processes enqueued jobs
 
 ### Live Camera Testing
 
@@ -62,18 +69,24 @@ found during testing and fixed.
 - [x] MQTT notifications during live service (both cameras, 6 clips, all acknowledged)
 - [x] SIGTERM clean shutdown — clips saved, MQTT disconnected, cameras closed
 - [x] Clip files are valid playable MP4
+- [x] Audio muxing via service — clips have H.264 video + AAC audio streams
+- [x] Per-camera audio toggle — only `audio: true` cameras get muxed
+- [x] Audio disabled — no impact on video pipeline
+- [x] Full E2E with audio — pre-motion audio coverage, clean shutdown
+- [x] Storage quota eviction during live service
 
 ### Features
 
 | Commit | Feature | Description |
 |---|---|---|
 | — | USB/external storage mount validation | `require_mount: true` config option checks storage path is on a non-root mount at startup |
+| — | Audio recording (post-mux) | sounddevice capture + PyAV AAC mux onto clips, per-camera toggle, graceful degradation |
 
 ### Not Yet Tested
 
 - [x] `require_mount` validation with USB drive at `/mnt/usb`
+- [x] Storage quota eviction with real clips
 - [ ] systemd deployment
-- [ ] Storage quota eviction with real clips
 - [ ] MQTT broker disconnect/reconnect
 - [ ] Service with paho-mqtt uninstalled
 - [ ] Reboot auto-start

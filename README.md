@@ -1,6 +1,6 @@
 # pypicammotion
 
-Motion-detection video recording for Raspberry Pi cameras. Uses picamera2 + OpenCV to detect motion on a low-res stream and save H.264 MP4 clips with a pre-motion buffer. Supports multiple cameras, disk quota management, and optional MQTT notifications.
+Motion-detection video recording for Raspberry Pi cameras. Uses picamera2 + OpenCV to detect motion on a low-res stream and save H.264 MP4 clips with a pre-motion buffer. Supports multiple cameras, disk quota management, optional audio recording from a USB microphone, and optional MQTT notifications.
 
 ## Quick Start
 
@@ -52,7 +52,30 @@ See [`config.example.yaml`](config.example.yaml) for a fully commented example. 
 | `cameras.*.pre_motion_seconds` | `5.0` | Buffer before motion |
 | `cameras.*.post_motion_seconds` | `3.0` | Recording tail after motion stops |
 | `cameras.*.sensitivity` | `0.05` | Fraction of frame that must change (lower = more sensitive) |
+| `cameras.*.audio` | `true` | Mux audio onto this camera's clips (requires global audio enabled) |
+| `audio.enabled` | `false` | Enable audio capture from a microphone |
+| `audio.device` | `null` | Audio device name or index (`python -m sounddevice` to list) |
+| `audio.sample_rate` | `48000` | Sample rate in Hz |
+| `audio.channels` | `1` | Number of channels (1=mono, 2=stereo) |
+| `audio.buffer_seconds` | `15.0` | Rolling buffer size (must be >= `pre_motion_seconds`) |
 | `mqtt.enabled` | `false` | Enable MQTT clip notifications |
+
+## Audio
+
+Install with audio support:
+
+```bash
+sudo apt install libportaudio2
+poetry install -E audio
+```
+
+When enabled, audio is captured continuously from a USB microphone into a rolling buffer. After each video clip is saved, matching audio is extracted and muxed onto the MP4 as an AAC stream (video is codec-copied, not re-encoded). Audio can be disabled per-camera with `audio: false` in the camera config.
+
+List available audio devices:
+
+```bash
+python -m sounddevice
+```
 
 ## MQTT
 
@@ -93,6 +116,7 @@ journalctl -u pypicammotion -f
 - Recording uses `CircularOutput2` + `PyavOutput` for MP4 with pre-motion buffer
 - `LibavH264Encoder` (software H.264) — Pi 5 has no hardware H.264 encoder
 - Storage manager tracks clips in-memory, rescans on startup, evicts oldest-first
+- Audio is post-muxed: a shared capture thread records to a rolling buffer, then a background worker muxes AAC audio onto each saved MP4 via PyAV (codec-copy video, no re-encode). Failures never affect video clips
 
 ## License
 

@@ -21,6 +21,7 @@ class CameraConfig:
     sensitivity: float = 0.05
     min_contour_area: int = 500
     blur_kernel: int = 21
+    audio: bool = True
 
 
 @dataclass
@@ -43,9 +44,19 @@ class MqttConfig:
 
 
 @dataclass
+class AudioConfig:
+    enabled: bool = False
+    device: str | int | None = None
+    sample_rate: int = 48000
+    channels: int = 1
+    buffer_seconds: float = 15.0
+
+
+@dataclass
 class AppConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
     mqtt: MqttConfig = field(default_factory=MqttConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
 
 
@@ -79,6 +90,18 @@ def load_config(path: str | Path) -> AppConfig:
         topic_prefix=mqtt_raw.get("topic_prefix", MqttConfig.topic_prefix),
     )
 
+    audio_raw = raw.get("audio", {})
+    audio_device_raw = audio_raw.get("device")
+    if isinstance(audio_device_raw, str) and audio_device_raw.isdigit():
+        audio_device_raw = int(audio_device_raw)
+    audio = AudioConfig(
+        enabled=bool(audio_raw.get("enabled", AudioConfig.enabled)),
+        device=audio_device_raw,
+        sample_rate=int(audio_raw.get("sample_rate", AudioConfig.sample_rate)),
+        channels=int(audio_raw.get("channels", AudioConfig.channels)),
+        buffer_seconds=float(audio_raw.get("buffer_seconds", AudioConfig.buffer_seconds)),
+    )
+
     cameras: dict[str, CameraConfig] = {}
     for name, cam_raw in raw.get("cameras", {}).items():
         if not isinstance(cam_raw, dict):
@@ -96,6 +119,8 @@ def load_config(path: str | Path) -> AppConfig:
         for key in ("pre_motion_seconds", "post_motion_seconds", "sensitivity"):
             if key in cam_raw:
                 kw[key] = float(cam_raw[key])
+        if "audio" in cam_raw:
+            kw["audio"] = bool(cam_raw["audio"])
         cam = CameraConfig(**kw)
         if not 0.0 <= cam.sensitivity <= 1.0:
             raise ValueError(f"camera '{name}': sensitivity must be 0.0–1.0, got {cam.sensitivity}")
@@ -107,4 +132,4 @@ def load_config(path: str | Path) -> AppConfig:
         log.warning("no cameras defined in config, adding default camera 0")
         cameras["cam0"] = CameraConfig(name="cam0")
 
-    return AppConfig(storage=storage, mqtt=mqtt, cameras=cameras)
+    return AppConfig(storage=storage, mqtt=mqtt, audio=audio, cameras=cameras)

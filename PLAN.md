@@ -15,6 +15,7 @@ pypicammotion is a motion-detection video recording service for Raspberry Pi cam
 | Threading | One thread per camera, Picamera2 created inside thread | picamera2 setup is not thread-safe across instances |
 | Config | YAML via `pyyaml`, dataclasses | Minimal deps, natural for nested per-camera config |
 | MQTT | Optional dep (`paho-mqtt`), graceful degradation | Service works without network; import is guarded |
+| Audio | Post-mux via sounddevice + PyAV, optional dep | Keeps video pipeline untouched; shared capture thread, per-camera toggle |
 | Storage tracking | In-memory sorted list, disk scan on startup | Clips are append-only FIFO — no database needed |
 
 ## Module Structure
@@ -26,6 +27,7 @@ pypicammotion/
 ├── motion.py         # OpenCV frame differencing on YUV420 Y-plane
 ├── camera.py         # Picamera2 wrapper + IDLE/RECORDING/TAIL state machine
 ├── storage.py        # Disk quota enforcement, oldest-first eviction
+├── audio.py          # Optional audio capture + post-mux (sounddevice + PyAV)
 ├── notifier.py       # Optional MQTT notifications (paho-mqtt)
 ├── service.py        # Multi-camera orchestrator, signal handling
 └── cli.py            # CLI entry points: list-cameras, test, run
@@ -156,7 +158,44 @@ pypicammotion/
 
 ---
 
-## Phase 5: systemd + Polish
+## Phase 5: Audio Recording
+
+**Goal**: Mux audio from a USB microphone onto saved clips.
+
+### Approach
+
+Post-mux: capture audio continuously into a rolling buffer. After each video
+clip is saved, extract matching audio and mux it onto the MP4 using PyAV.
+The existing video pipeline stays untouched.
+
+### Files to create/modify
+
+**`audio.py`** — `AudioCapture` class:
+- `sounddevice.InputStream` callback appends `(time.monotonic(), pcm)` to a `deque`
+- `extract(start_mono, duration)` → `np.ndarray | None`
+- `enqueue_mux(path, start_mono, duration)` — queues a background mux job
+- `_mux_worker()` — thread consuming queue, calls `mux_audio_onto_mp4()`
+- `mux_audio_onto_mp4()` — codec-copy video + encode AAC audio via PyAV, atomic replace
+
+**`config.py`** — `AudioConfig` dataclass (enabled, device, sample_rate, channels, buffer_seconds). Per-camera `audio: bool` toggle.
+
+**`camera.py`** — Store `_recording_start_mono = time.monotonic()`, pass through clip callback.
+
+**`service.py`** — Create `AudioCapture` if enabled, enqueue mux in `_on_clip_saved`, stop in `_shutdown`.
+
+**`pyproject.toml`** — `audio = ["sounddevice>=0.5"]` optional dep.
+
+### Verify
+- `python -m sounddevice` lists USB mic
+- AudioCapture start/stop, extract from buffer
+- mux_audio_onto_mp4 produces MP4 with both H.264 video + AAC audio
+- Service with audio enabled: clips have audio, per-camera toggle works
+- Audio disabled: no impact on video pipeline
+- Mic failure: clips saved without audio, no crash
+
+---
+
+## Phase 6: systemd + Polish
 
 **Goal**: Production-ready deployment.
 

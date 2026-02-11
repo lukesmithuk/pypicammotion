@@ -18,6 +18,18 @@ mqtt:
   port: 1883
   topic_prefix: pypicammotion
 
+audio:
+  # Set enabled: true to mux audio from a USB mic onto clips
+  # Requires: sudo apt install libportaudio2 && poetry install --extras audio
+  enabled: false
+  # Device name or index — use `python -m sounddevice` to list devices
+  # Leave unset (null) to use the system default input device
+  device: null
+  sample_rate: 48000
+  channels: 1
+  # Rolling buffer size in seconds — must be >= pre_motion_seconds
+  buffer_seconds: 15.0
+
 cameras:
   # Each key becomes the camera name used in clip paths and MQTT topics.
   # Use `pypicammotion list-cameras` to find device numbers.
@@ -42,6 +54,9 @@ cameras:
     min_contour_area: 500
     # Gaussian blur kernel size (must be odd) — larger = less noise
     blur_kernel: 21
+
+    # Set to false to skip audio muxing for this camera (default: true)
+    # audio: true
 
   # Uncomment to add a second camera:
   # back:

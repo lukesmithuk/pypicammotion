@@ -11,8 +11,7 @@
 
 - [ ] systemd integration (service unit file written but not deployed/tested)
 - [ ] Reboot auto-start via `systemctl enable`
-- [ ] Storage quota eviction during live service run (unit-tested with
-  synthetic files, not verified with real clips under quota pressure)
+- [x] Storage quota eviction during live service run
 - [ ] Behaviour with paho-mqtt uninstalled (graceful degradation path)
 - [ ] MQTT broker disconnect/reconnect during live service
 - [ ] Full service run with USB storage (`require_mount: true`, clips saving
@@ -48,11 +47,9 @@
 - [ ] **Notification on service start/stop** — MQTT message when the service
   starts or stops, not just on clip saves.
 
-- [ ] **Audio recording** — capture audio alongside video in saved clips.
-  Requires attaching a USB microphone or I2S mic, recording via ALSA/PulseAudio,
-  and muxing the audio stream into the MP4 output alongside the H.264 video
-  (e.g. via PyAV). Needs config options for audio device selection and
-  enable/disable per camera.
+- [x] **Audio recording** — post-mux audio from USB mic onto saved clips
+  via sounddevice + PyAV. Shared AudioCapture thread with rolling buffer,
+  background mux worker, per-camera audio toggle, graceful degradation.
 
 - [x] **USB storage support** — `storage.path` can point to any mounted
   filesystem including USB drives. Added `require_mount: true` config option
