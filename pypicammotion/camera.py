@@ -44,13 +44,12 @@ class Camera:
         self._storage_path = Path(storage_path)
         self._on_clip_saved = on_clip_saved
         self._stop_event = stop_event or threading.Event()
-
         self._state = State.IDLE
         self._tail_deadline: float = 0.0
         self._recording_start: datetime | None = None
         self._recording_start_mono: float | None = None
         self._current_clip: Path | None = None
-
+        self._peak_score: float = 0.0
         self._picam: Picamera2 | None = None
         self._encoder: LibavH264Encoder | None = None
         self._circular: CircularOutput2 | None = None
@@ -134,20 +133,25 @@ class Camera:
 
         motion, score = self._detector.detect(frame)
 
+        name = self.config.name
         with self._lock:
             if self._state == State.IDLE:
                 if motion:
-                    self._start_recording()
+                    self._start_recording(score)
             elif self._state == State.RECORDING:
+                self._peak_score = max(self._peak_score, score)
                 if motion:
                     self._tail_deadline = 0.0
                 else:
                     self._tail_deadline = time.monotonic() + self.config.post_motion_seconds
                     self._state = State.TAIL
+                    log.debug("[%s] motion ended (score=%.3f), entering tail", name, score)
             elif self._state == State.TAIL:
+                self._peak_score = max(self._peak_score, score)
                 if motion:
                     self._tail_deadline = 0.0
                     self._state = State.RECORDING
+                    log.debug("[%s] motion resumed (score=%.3f)", name, score)
 
     def _check_tail(self) -> None:
         """Called from the main loop to stop recording when tail expires."""
@@ -160,12 +164,13 @@ class Camera:
         day_dir.mkdir(parents=True, exist_ok=True)
         return day_dir / f"{ts.strftime('%H-%M-%S')}.mp4"
 
-    def _start_recording(self) -> None:
+    def _start_recording(self, score: float) -> None:
         ts = datetime.now()
         self._recording_start = ts
         self._recording_start_mono = time.monotonic()
         self._current_clip = self._clip_path(ts)
-        log.info("[%s] motion started — recording to %s", self.config.name, self._current_clip)
+        self._peak_score = score
+        log.info("[%s] motion started (score=%.3f) — recording to %s", self.config.name, score, self._current_clip)
 
         pyav_out = PyavOutput(str(self._current_clip))
         self._circular.open_output(pyav_out)
@@ -194,7 +199,7 @@ class Camera:
         if clip and start and clip.exists():
             duration = (datetime.now() - start).total_seconds()
             size_kb = clip.stat().st_size / 1024
-            log.info("[%s] clip saved: %s (%.1fs, %.0f KB)", name, clip, duration, size_kb)
+            log.info("[%s] clip saved: %s (%.1fs, %.0f KB, peak=%.3f)", name, clip, duration, size_kb, self._peak_score)
             if self._on_clip_saved:
                 try:
                     self._on_clip_saved(name, clip, start, duration, start_mono)

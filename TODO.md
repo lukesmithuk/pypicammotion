@@ -23,9 +23,9 @@
   (~0.5s). Could be exposed as a config option for users who want to tune
   the motion detection window (e.g. longer for very slow motion).
 
-- [ ] **Motion event logging with scores** — log the motion score periodically
-  or on state transitions to help users tune sensitivity without trial and
-  error.
+- [x] **Motion event logging with scores** — log the motion score at state
+  transitions (INFO on start/save, DEBUG on tail enter/resume) and track
+  peak score per clip. Visible with `-v` for sensitivity tuning.
 
 - [ ] **Health check endpoint** — expose a simple HTTP or MQTT heartbeat so
   monitoring systems can verify the service is alive and cameras are running.

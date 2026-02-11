@@ -700,8 +700,8 @@ pypicammotion test --camera 0 --sensitivity 0.05 --output-dir /tmp/cam-test
 
 - [ ] Prints `testing camera 0 (sensitivity=0.05)` and `clips → /tmp/cam-test`
 - [ ] Wave hand or move in front of camera
-- [ ] Log shows `motion started — recording to /tmp/cam-test/test/YYYY-MM-DD/HH-MM-SS.mp4`
-- [ ] After motion stops, log shows `clip saved: ... (Xs, Y KB)`
+- [ ] Log shows `motion started (score=N.NNN) — recording to /tmp/cam-test/test/YYYY-MM-DD/HH-MM-SS.mp4`
+- [ ] After motion stops, log shows `clip saved: ... (Xs, Y KB, peak=N.NNN)`
 - [ ] Clip file exists at the logged path
 
 ### 5.2 Clip is playable MP4 with correct duration
@@ -749,7 +749,21 @@ find /tmp/cam-multi -name "*.mp4" | wc -l
 - [ ] No tracebacks
 - [ ] If a clip was being recorded, it is saved and valid
 
-### 5.6 High sensitivity — constant recording
+### 5.6 Verbose mode — motion score logging
+
+```bash
+pypicammotion -v test --camera 0 --sensitivity 0.01 --output-dir /tmp/cam-scores
+```
+
+1. Wave hand or move in front of camera, then stop and wait for clip to save
+
+- [ ] `motion started (score=N.NNN)` at INFO level — score is above sensitivity threshold
+- [ ] `motion ended (score=N.NNN), entering tail` at DEBUG level
+- [ ] `motion resumed (score=N.NNN)` at DEBUG level (if motion resumes during tail)
+- [ ] `clip saved: ... (peak=N.NNN)` — peak is the highest score seen during the clip
+- [ ] Peak score >= the initial motion started score
+
+### 5.7 High sensitivity — constant recording
 
 ```bash
 pypicammotion test --camera 0 --sensitivity 0.001 --output-dir /tmp/cam-sensitive
@@ -758,7 +772,7 @@ pypicammotion test --camera 0 --sensitivity 0.001 --output-dir /tmp/cam-sensitiv
 - [ ] Recording starts almost immediately (very low threshold)
 - [ ] Ctrl+C stops cleanly
 
-### 5.7 Low sensitivity — no false triggers
+### 5.8 Low sensitivity — no false triggers
 
 ```bash
 pypicammotion test --camera 0 --sensitivity 0.8 --output-dir /tmp/cam-insensitive
@@ -767,7 +781,7 @@ pypicammotion test --camera 0 --sensitivity 0.8 --output-dir /tmp/cam-insensitiv
 - [ ] No recording triggered by normal ambient changes
 - [ ] Only triggers if >80% of the frame changes (e.g. covering/uncovering the lens)
 
-### 5.8 Invalid camera device
+### 5.9 Invalid camera device
 
 ```bash
 pypicammotion test --camera 99 --output-dir /tmp/cam-bad 2>&1
