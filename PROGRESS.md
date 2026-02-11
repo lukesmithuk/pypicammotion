@@ -4,7 +4,8 @@
 
 **Branch**: `implement-full-package` (pushed to origin)
 **Status**: Core implementation complete with audio support. All modules
-functional. Three bugs found during testing and fixed.
+functional. Full manual test plan passed (all 10 sections). Three bugs
+found during testing and fixed.
 
 ## What's Done
 
@@ -20,7 +21,7 @@ functional. Three bugs found during testing and fixed.
 | `notifier.py` | Done | Optional MQTT via paho-mqtt, guarded import |
 | `service.py` | Done | Multi-camera orchestrator, signal handling |
 | `cli.py` | Done | list-cameras, test, run subcommands |
-| `systemd/` | Done | Unit file written (not yet deployed) |
+| `systemd/` | Done | Unit file written and tested |
 | `audio.py` | Done | Audio capture, rolling buffer, post-mux worker |
 | `config.example.yaml` | Done | Fully commented example config |
 | `check-deps.sh` | Done | System dependency checker |
@@ -39,9 +40,13 @@ functional. Three bugs found during testing and fixed.
 
 | File | Commit | Description |
 |---|---|---|
-| `PLAN.md` | `cfadb71`, updated `2b98ea8` | Full implementation plan, kept in sync |
-| `TEST_PLAN.md` | `c31cf9b`, updated `2b98ea8` | Manual test plan, 40+ test cases |
-| `README.md` | `cfadb71`, updated `e54e3ba` | User-facing docs |
+| `PLAN.md` | `cfadb71`, updated `a4a7e13` | Full implementation plan with audio phase |
+| `TEST_PLAN.md` | `c31cf9b`, updated `a4a7e13` | Manual test plan, 60+ test cases, all passing |
+| `README.md` | `cfadb71`, updated `a4a7e13` | User-facing docs with audio and systemd |
+| `CLAUDE.md` | `0f761a8`, updated `a4a7e13` | Claude Code onboarding guide |
+| `DECISIONS.md` | `48a72f9`, updated `a4a7e13` | Architectural decisions with rationale |
+| `TODO.md` | `48a72f9`, updated `a4a7e13` | Known issues, untested items, future work |
+| `PROGRESS.md` | `48a72f9`, updated `a4a7e13` | Implementation and test status tracker |
 
 ## What's Been Tested
 
@@ -74,6 +79,7 @@ functional. Three bugs found during testing and fixed.
 - [x] Audio disabled — no impact on video pipeline
 - [x] Full E2E with audio — pre-motion audio coverage, clean shutdown
 - [x] Storage quota eviction during live service
+- [x] systemd start/stop/enable — clean lifecycle, logs in journalctl
 
 ### Features
 
@@ -86,14 +92,20 @@ functional. Three bugs found during testing and fixed.
 
 - [x] `require_mount` validation with USB drive at `/mnt/usb`
 - [x] Storage quota eviction with real clips
-- [ ] systemd deployment
+- [x] systemd deployment (start, stop, enable, journalctl logs)
 - [ ] MQTT broker disconnect/reconnect
 - [ ] Service with paho-mqtt uninstalled
-- [ ] Reboot auto-start
+- [x] Reboot auto-start (`systemctl enable` verified, symlink created)
 
 ## Commit History
 
 ```
+a4a7e13 Add audio recording via post-mux onto saved clips
+88ece19 Add storage mount validation for USB drives
+7d458e7 Add USB storage support to TODO list
+ae824d8 Add audio recording to TODO list
+0f761a8 Add CLAUDE.md for Claude Code onboarding
+48a72f9 Add project continuity docs: DECISIONS.md, TODO.md, PROGRESS.md
 e54e3ba Update README with ring buffer and tilde expansion details
 2b98ea8 Update PLAN.md and TEST_PLAN.md to reflect bug fixes
 2bc98d6 Set motion compare_frames to 0.5s based on camera FPS

@@ -99,7 +99,9 @@ sudo mkdir -p /etc/pypicammotion
 sudo cp config.example.yaml /etc/pypicammotion/config.yaml
 # Edit /etc/pypicammotion/config.yaml
 
-# Install service
+# Install service — edit ExecStart to use the full path to the venv binary:
+#   ExecStart=/path/to/venv/bin/pypicammotion run --config /etc/pypicammotion/config.yaml
+# Find your venv path with: poetry env info -p
 sudo cp systemd/pypicammotion.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now pypicammotion

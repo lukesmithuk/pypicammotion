@@ -9,8 +9,8 @@
 
 ## Not Yet Tested
 
-- [ ] systemd integration (service unit file written but not deployed/tested)
-- [ ] Reboot auto-start via `systemctl enable`
+- [x] systemd integration (start, stop, enable, journalctl logs)
+- [x] Reboot auto-start via `systemctl enable` (symlink created, not rebooted)
 - [x] Storage quota eviction during live service run
 - [ ] Behaviour with paho-mqtt uninstalled (graceful degradation path)
 - [ ] MQTT broker disconnect/reconnect during live service

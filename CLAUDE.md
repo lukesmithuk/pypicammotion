@@ -82,3 +82,4 @@ cli.py → Service → Camera(s) → MotionDetector
 - `libcap-dev` must be installed for `python-prctl` (transitive dep of picamera2)
 - `libportaudio2` must be installed for audio capture (sounddevice)
 - Clip storage path: `{storage}/{camera_name}/{YYYY-MM-DD}/{HH-MM-SS}.mp4`
+- systemd `ExecStart` needs the full venv path to the `pypicammotion` binary (Poetry venv is not on system PATH)
