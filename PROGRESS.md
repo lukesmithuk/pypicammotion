@@ -91,6 +91,7 @@ found during testing and fixed.
 | — | USB/external storage mount validation | `require_mount: true` config option checks storage path is on a non-root mount at startup |
 | — | Audio recording (post-mux) | sounddevice capture + PyAV AAC mux onto clips, per-camera toggle, graceful degradation |
 | — | Motion event logging with scores | Log motion score at state transitions and peak score per clip for sensitivity tuning |
+| — | Clip metadata embedding | Camera name, timestamp, peak score, sensitivity embedded as MP4 container metadata; survives audio post-mux |
 
 ### Not Yet Tested
 

@@ -207,6 +207,7 @@ def mux_audio_onto_mp4(
     try:
         input_container = av.open(str(video_path))
         output_container = av.open(tmp_path, mode="w")
+        output_container.metadata.update(input_container.metadata)
 
         # Copy video stream
         in_video = input_container.streams.video[0]

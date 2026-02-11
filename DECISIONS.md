@@ -142,6 +142,24 @@ picamera2's encoder pipeline doesn't support audio streams, and modifying
 CircularOutput2 would be fragile. Post-mux is simpler and keeps the video
 pipeline completely untouched.
 
+## Clip metadata: PyAV container remux
+
+Each saved clip is remuxed with MP4 container metadata (`title`, `date`,
+`comment` containing JSON with camera name, peak score, and sensitivity).
+The remux is a codec-copy pass via PyAV with atomic `os.replace()` — the
+same pattern used by audio post-mux.
+
+Metadata is written by `camera.py` before the clip-saved callback fires, so
+audio post-mux sees it and preserves it (`output_container.metadata.update(
+input_container.metadata)`). Failure is non-fatal: a warning is logged and
+the clip is kept intact.
+
+**Alternative considered**: Writing metadata during recording (via PyavOutput
+or encoder options). Rejected because picamera2's output pipeline doesn't
+expose container metadata, and modifying the output mid-stream would be
+fragile. A post-write remux is simple, reliable, and consistent with the
+audio approach.
+
 ## Audio library: sounddevice (PortAudio)
 
 `sounddevice` is a thin wrapper around PortAudio with a callback-based API

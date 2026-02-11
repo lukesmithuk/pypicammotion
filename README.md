@@ -119,6 +119,7 @@ journalctl -u pypicammotion -f
 - `LibavH264Encoder` (software H.264) — Pi 5 has no hardware H.264 encoder
 - Storage manager tracks clips in-memory, rescans on startup, evicts oldest-first
 - Audio is post-muxed: a shared capture thread records to a rolling buffer, then a background worker muxes AAC audio onto each saved MP4 via PyAV (codec-copy video, no re-encode). Failures never affect video clips
+- Clips embed MP4 container metadata (title, date, motion score) — inspect with `ffprobe -show_entries format_tags clip.mp4`
 
 ## License
 

@@ -30,8 +30,8 @@
 - [ ] **Health check endpoint** — expose a simple HTTP or MQTT heartbeat so
   monitoring systems can verify the service is alive and cameras are running.
 
-- [ ] **Clip metadata** — embed motion score, camera name, or timestamps in
-  the MP4 metadata (e.g. via PyAV container metadata).
+- [x] **Clip metadata** — embed motion score, camera name, and timestamps in
+  the MP4 container metadata via PyAV (title, date, comment with JSON).
 
 - [ ] **Web UI / clip browser** — simple web interface to browse and preview
   saved clips, grouped by camera and date.

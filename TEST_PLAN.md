@@ -1412,3 +1412,59 @@ done
 - [ ] No audio-related error tracebacks
 - [ ] Ctrl+C shuts down cleanly: `audio capture stopped` appears in logs
 - [ ] Unplugging the USB mic mid-run does not crash the service (clips continue without audio)
+
+---
+
+## 11. Clip Metadata Embedding
+
+### 11.1 Metadata present on video-only clips
+
+```bash
+pypicammotion test --camera 0 --sensitivity 0.01 --output-dir /tmp/meta-test
+# Trigger motion, Ctrl+C after a clip is saved
+ffprobe -v quiet -show_entries format_tags /tmp/meta-test/test/*/*.mp4
+```
+
+- [ ] `TAG:title=test motion clip`
+- [ ] `TAG:date` is an ISO 8601 timestamp matching the clip filename
+- [ ] `TAG:comment` is valid JSON containing `camera`, `peak_score`, and `sensitivity`
+- [ ] `peak_score` is a positive number above the sensitivity threshold
+- [ ] `sensitivity` matches the `--sensitivity` value (0.01)
+
+### 11.2 Metadata survives audio post-mux
+
+*Prerequisites: audio enabled, USB mic connected.*
+
+```bash
+cat > /tmp/meta-audio.yaml << 'EOF'
+storage:
+  path: /tmp/meta-audio-clips
+  max_gb: 0.5
+audio:
+  enabled: true
+  sample_rate: 48000
+  channels: 1
+cameras:
+  front:
+    device: 0
+    sensitivity: 0.05
+EOF
+pypicammotion -v run --config /tmp/meta-audio.yaml
+# Trigger motion, wait for "muxed audio onto" log, Ctrl+C
+ffprobe -v quiet -show_entries format_tags /tmp/meta-audio-clips/front/*/*.mp4
+```
+
+- [ ] Clip has both video and audio streams (audio mux completed)
+- [ ] `TAG:title=front motion clip`
+- [ ] `TAG:date` and `TAG:comment` are present and correct
+- [ ] JSON in `comment` contains `"camera": "front"`
+
+### 11.3 Metadata failure does not prevent clip saving
+
+```bash
+# Verify by checking logs — if metadata write fails, a warning is logged
+# but the clip and callback proceed normally
+pypicammotion -v test --camera 0 --sensitivity 0.01 --output-dir /tmp/meta-fail-test
+```
+
+- [ ] Clips are saved even if metadata write were to fail (warning logged, clip intact)

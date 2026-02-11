@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import enum
+import json
 import logging
+import os
+import tempfile
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
+
+import av
 
 from picamera2 import Picamera2
 from picamera2.encoders import LibavH264Encoder
@@ -164,6 +169,51 @@ class Camera:
         day_dir.mkdir(parents=True, exist_ok=True)
         return day_dir / f"{ts.strftime('%H-%M-%S')}.mp4"
 
+    def _write_metadata(
+        self, clip: Path, name: str, start: datetime, peak_score: float
+    ) -> None:
+        """Remux *clip* with MP4 container metadata (codec-copy, atomic replace)."""
+        fd, tmp_path = tempfile.mkstemp(suffix=".mp4", dir=clip.parent)
+        os.close(fd)
+        try:
+            inp = av.open(str(clip))
+            out = av.open(tmp_path, mode="w")
+
+            out.metadata.update(
+                {
+                    "title": f"{name} motion clip",
+                    "date": start.isoformat(timespec="seconds"),
+                    "comment": json.dumps(
+                        {
+                            "camera": name,
+                            "peak_score": round(peak_score, 4),
+                            "sensitivity": self.config.sensitivity,
+                        }
+                    ),
+                }
+            )
+
+            streams = {}
+            for s in inp.streams:
+                streams[s] = out.add_stream_from_template(s)
+
+            for packet in inp.demux():
+                if packet.dts is None:
+                    continue
+                packet.stream = streams[packet.stream]
+                out.mux(packet)
+
+            out.close()
+            inp.close()
+            os.replace(tmp_path, str(clip))
+            log.debug("[%s] wrote metadata to %s", name, clip)
+        except Exception:
+            log.warning("[%s] failed to write metadata to %s", name, clip, exc_info=True)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
     def _start_recording(self, score: float) -> None:
         ts = datetime.now()
         self._recording_start = ts
@@ -200,6 +250,7 @@ class Camera:
             duration = (datetime.now() - start).total_seconds()
             size_kb = clip.stat().st_size / 1024
             log.info("[%s] clip saved: %s (%.1fs, %.0f KB, peak=%.3f)", name, clip, duration, size_kb, self._peak_score)
+            self._write_metadata(clip, name, start, self._peak_score)
             if self._on_clip_saved:
                 try:
                     self._on_clip_saved(name, clip, start, duration, start_mono)
