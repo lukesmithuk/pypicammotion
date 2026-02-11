@@ -80,6 +80,9 @@ found during testing and fixed.
 - [x] Full E2E with audio — pre-motion audio coverage, clean shutdown
 - [x] Storage quota eviction during live service
 - [x] systemd start/stop/enable — clean lifecycle, logs in journalctl
+- [x] Service with paho-mqtt uninstalled — warning logged, clips saved, clean shutdown
+- [x] MQTT broker disconnect/reconnect — service survives, messages resume after restart
+- [x] USB storage with require_mount — clips saved to /mnt/usb, eviction works, root FS rejected
 
 ### Features
 
@@ -93,8 +96,8 @@ found during testing and fixed.
 - [x] `require_mount` validation with USB drive at `/mnt/usb`
 - [x] Storage quota eviction with real clips
 - [x] systemd deployment (start, stop, enable, journalctl logs)
-- [ ] MQTT broker disconnect/reconnect
-- [ ] Service with paho-mqtt uninstalled
+- [x] MQTT broker disconnect/reconnect (auto-reconnects, queued messages delivered)
+- [x] Service with paho-mqtt uninstalled (warning logged, no crash)
 - [x] Reboot auto-start (`systemctl enable` verified, symlink created)
 
 ## Commit History

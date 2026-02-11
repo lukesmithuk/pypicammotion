@@ -12,9 +12,9 @@
 - [x] systemd integration (start, stop, enable, journalctl logs)
 - [x] Reboot auto-start via `systemctl enable` (symlink created, not rebooted)
 - [x] Storage quota eviction during live service run
-- [ ] Behaviour with paho-mqtt uninstalled (graceful degradation path)
-- [ ] MQTT broker disconnect/reconnect during live service
-- [ ] Full service run with USB storage (`require_mount: true`, clips saving
+- [x] Behaviour with paho-mqtt uninstalled (graceful degradation path)
+- [x] MQTT broker disconnect/reconnect during live service
+- [x] Full service run with USB storage (`require_mount: true`, clips saving
   to `/mnt/usb`)
 
 ## Future Improvements
