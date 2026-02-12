@@ -1,0 +1,68 @@
+# pypicammotion configuration
+# Copy to /etc/pypicammotion/config.yaml and edit to taste.
+
+storage:
+  # Where to save motion clips (supports any mounted filesystem including USB)
+  path: /mnt/usb/clips
+  # Maximum total storage in GB — oldest clips evicted first
+  max_gb: 200.0
+  # Set to true when using an external/USB drive — the service will refuse to
+  # start if the path is on the root filesystem (i.e. the drive isn't mounted)
+  require_mount: true
+
+mqtt:
+  # Set enabled: true to publish clip events via MQTT
+  # Requires: pip install pypicammotion[mqtt]
+  enabled: false
+  broker: localhost
+  port: 1883
+  topic_prefix: pypicammotion
+  # Publish service status every N seconds (0 to disable)
+  heartbeat_interval: 30
+
+audio:
+  # Set enabled: true to mux audio from a USB mic onto clips
+  # Requires: sudo apt install libportaudio2 && poetry install --extras audio
+  enabled: false
+  # Device name or index — use `python -m sounddevice` to list devices
+  # Leave unset (null) to use the system default input device
+  device: null
+  sample_rate: 48000
+  channels: 1
+  # Rolling buffer size in seconds — must be >= pre_motion_seconds
+  buffer_seconds: 15.0
+
+cameras:
+  # Each key becomes the camera name used in clip paths and MQTT topics.
+  # Use `pypicammotion list-cameras` to find device numbers.
+
+  front:
+    device: 0
+    resolution: [1920, 1080]
+    fps: 30
+
+    # Low-res stream used for motion detection (smaller = faster)
+    lores_resolution: [640, 480]
+
+    # Seconds of video to keep before motion is detected
+    pre_motion_seconds: 5.0
+    # Seconds to keep recording after motion stops
+    post_motion_seconds: 3.0
+
+    # Motion sensitivity: fraction of frame area that must change (0.0–1.0)
+    # Lower = more sensitive. 0.05 works well for indoor rooms.
+    sensitivity: 0.05
+    # Ignore contours smaller than this (pixels) — filters noise
+    min_contour_area: 500
+    # Gaussian blur kernel size (must be odd) — larger = less noise
+    blur_kernel: 21
+
+    # Set to false to skip audio muxing for this camera (default: true)
+    # audio: true
+
+  # Uncomment to add a second camera:
+  # back:
+  #   device: 1
+  #   resolution: [1920, 1080]
+  #   fps: 30
+  #   sensitivity: 0.08
