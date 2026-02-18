@@ -1,3 +1,5 @@
+"""Multi-camera orchestrator: starts camera threads, handles signals, and manages graceful shutdown."""
+
 from __future__ import annotations
 
 import logging
@@ -34,8 +36,25 @@ class Service:
         self._audio: AudioCapture | None = None
         self._start_time: float = 0.0
 
+    def _log_config(self) -> None:
+        cfg = self._config
+        log.info("storage: path=%s, max_gb=%.1f, require_mount=%s",
+                 cfg.storage.path, cfg.storage.max_gb, cfg.storage.require_mount)
+        log.info("mqtt: enabled=%s, broker=%s, port=%d, topic_prefix=%s",
+                 cfg.mqtt.enabled, cfg.mqtt.broker, cfg.mqtt.port, cfg.mqtt.topic_prefix)
+        log.info("audio: enabled=%s, device=%s, sample_rate=%d, channels=%d, buffer=%.1fs",
+                 cfg.audio.enabled, cfg.audio.device, cfg.audio.sample_rate,
+                 cfg.audio.channels, cfg.audio.buffer_seconds)
+        for name, cam in cfg.cameras.items():
+            log.info("camera '%s': device=%d, resolution=%dx%d, fps=%d, "
+                     "sensitivity=%.3f, pre=%.1fs, post=%.1fs, audio=%s",
+                     name, cam.device, cam.resolution[0], cam.resolution[1],
+                     cam.fps, cam.sensitivity, cam.pre_motion_seconds,
+                     cam.post_motion_seconds, cam.audio)
+
     def run(self) -> None:
         self._install_signals()
+        self._log_config()
 
         # Storage
         self._storage = StorageManager(

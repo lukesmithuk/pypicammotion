@@ -1,3 +1,5 @@
+"""Frame-differencing motion detector using Y-plane extraction, Gaussian blur, and contour filtering."""
+
 from __future__ import annotations
 
 from collections import deque

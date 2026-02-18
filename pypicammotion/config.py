@@ -1,3 +1,5 @@
+"""YAML configuration loading, validation, and dataclass definitions."""
+
 from __future__ import annotations
 
 import logging
@@ -17,7 +19,7 @@ class CameraConfig:
     lores_resolution: tuple[int, int] = (640, 480)
     fps: int = 30
     pre_motion_seconds: float = 5.0
-    post_motion_seconds: float = 3.0
+    post_motion_seconds: float = 15.0
     sensitivity: float = 0.05
     min_contour_area: int = 500
     blur_kernel: int = 21

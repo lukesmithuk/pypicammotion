@@ -47,7 +47,7 @@ cameras:
     # Seconds of video to keep before motion is detected
     pre_motion_seconds: 5.0
     # Seconds to keep recording after motion stops
-    post_motion_seconds: 3.0
+    post_motion_seconds: 15.0
 
     # Motion sensitivity: fraction of frame area that must change (0.0–1.0)
     # Lower = more sensitive. 0.05 works well for indoor rooms.
