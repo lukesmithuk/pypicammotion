@@ -1,3 +1,5 @@
+"""Optional MQTT notifier: publishes clip events and periodic heartbeat status."""
+
 from __future__ import annotations
 
 import json

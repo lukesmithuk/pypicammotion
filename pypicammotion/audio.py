@@ -1,3 +1,5 @@
+"""Optional audio capture and post-mux: records to a rolling buffer and muxes AAC audio onto saved clips."""
+
 from __future__ import annotations
 
 import logging

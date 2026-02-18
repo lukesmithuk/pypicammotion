@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=pypicammotion run --config /etc/pypicammotion/config.yaml
-User=root
+ExecStart=/opt/pypicammotion/venv/bin/pypicammotion run --config /etc/pypicammotion/config.yaml
+User=%i
 Group=video
-Restart=on-failure
+Restart=always
 RestartSec=5
 TimeoutStopSec=15
 

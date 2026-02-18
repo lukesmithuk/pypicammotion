@@ -1,3 +1,5 @@
+"""Camera thread with IDLE/RECORDING/TAIL state machine for motion-triggered clip capture."""
+
 from __future__ import annotations
 
 import enum

@@ -1,3 +1,5 @@
+"""Command-line interface: argparse entry point for run, list-cameras, and test commands."""
+
 from __future__ import annotations
 
 import argparse

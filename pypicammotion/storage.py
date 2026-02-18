@@ -1,3 +1,5 @@
+"""Disk storage manager: registers saved clips and enforces quota via oldest-first eviction."""
+
 from __future__ import annotations
 
 import logging
